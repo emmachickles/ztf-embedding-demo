@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZTF Light Curve Embedding Explorer</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0d1117; color: #c9d1d9; }
+  header { padding: 16px 24px; border-bottom: 1px solid #21262d; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header p { font-size: 13px; color: #8b949e; margin-top: 4px; }
+  .container { display: flex; height: calc(100vh - 80px); }
+  .left { flex: 1; min-width: 0; padding: 12px; }
+  .right { width: 420px; border-left: 1px solid #21262d; padding: 16px;
+           display: flex; flex-direction: column; }
+  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .controls label { font-size: 13px; color: #8b949e; }
+  .controls select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
+                     border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+  #scatter { width: 100%; height: 100%; }
+  .info-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+               padding: 16px; margin-bottom: 12px; }
+  .info-card h3 { font-size: 14px; color: #58a6ff; margin-bottom: 8px; }
+  .info-row { display: flex; justify-content: space-between; font-size: 13px;
+              padding: 3px 0; }
+  .info-label { color: #8b949e; }
+  .info-value { color: #c9d1d9; font-family: "SF Mono", monospace; }
+  #lc-plot { width: 100%; flex: 1; min-height: 250px; }
+  .placeholder { display: flex; align-items: center; justify-content: center;
+                 height: 100%; color: #484f58; font-size: 14px; text-align: center;
+                 line-height: 1.6; }
+  #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+             background: #0d1117; display: flex; align-items: center;
+             justify-content: center; z-index: 100; font-size: 16px; }
+  .legend-note { font-size: 11px; color: #484f58; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ZTF Light Curve Embedding Explorer</h1>
+  <p>Self-supervised transformer embeddings (z<sub>sig</sub>) of 14k ZTF periodic variables, projected to 2D with UMAP. Click a point to see its phase-folded light curve.</p>
+</header>
+
+<div class="container">
+  <div class="left">
+    <div class="controls">
+      <label>Color by:</label>
+      <select id="color-select">
+        <option value="label">Class</option>
+        <option value="var_type">Subtype</option>
+        <option value="period">Period</option>
+        <option value="rmag">Magnitude</option>
+        <option value="z_qual">z_qual (noise)</option>
+      </select>
+    </div>
+    <div id="scatter"></div>
+  </div>
+  <div class="right">
+    <div class="info-card" id="info-card">
+      <h3>Source Info</h3>
+      <div id="info-content">
+        <div class="placeholder">Click a point in the scatter plot<br>to view its light curve</div>
+      </div>
+    </div>
+    <div id="lc-plot">
+      <div class="placeholder" id="lc-placeholder">Phase-folded light curve will appear here</div>
+    </div>
+    <div class="legend-note" id="lc-note"></div>
+  </div>
+</div>
+
+<div id="loading">Loading data...</div>
+
+<script>
+const CLASS_COLORS = {
+  RRL: "#636EFA",
+  EB:  "#00CC96",
+  DSCT:"#EF553B",
+};
+const CLASS_NAMES = {
+  RRL: "RR Lyrae",
+  EB:  "Eclipsing Binary",
+  DSCT: "\u03B4 Scuti",
+};
+const SUBTYPE_COLORS = {
+  RR:  "#636EFA",
+  RRc: "#AB63FA",
+  EA:  "#00CC96",
+  EW:  "#19D3F3",
+  DSCT:"#EF553B",
+};
+
+let points = null;
+let lightcurves = null;
+
+async function init() {
+  const [ptsResp, lcResp] = await Promise.all([
+    fetch("points.json").then(r => r.json()),
+    fetch("lightcurves.json").then(r => r.json()),
+  ]);
+  points = ptsResp;
+  lightcurves = lcResp;
+  document.getElementById("loading").style.display = "none";
+  renderScatter("label");
+  document.getElementById("color-select").addEventListener("change", e => {
+    renderScatter(e.target.value);
+  });
+}
+
+function renderScatter(colorBy) {
+  const scatterDiv = document.getElementById("scatter");
+
+  if (colorBy === "label") {
+    // One trace per class so legend toggles work
+    const traces = Object.keys(CLASS_COLORS).map(cls => {
+      const subset = points.filter(p => p.label === cls);
+      return {
+        x: subset.map(p => p.x),
+        y: subset.map(p => p.y),
+        customdata: subset.map(p => p.idx),
+        mode: "markers",
+        type: "scattergl",
+        name: CLASS_NAMES[cls] || cls,
+        marker: { size: 3, color: CLASS_COLORS[cls], opacity: 0.6 },
+        hovertemplate: `${CLASS_NAMES[cls]}<br>P=%{text:.4f} d<extra></extra>`,
+        text: subset.map(p => p.period),
+      };
+    });
+    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
+
+  } else if (colorBy === "var_type") {
+    const subtypes = [...new Set(points.map(p => p.var_type))].sort();
+    const traces = subtypes.map(st => {
+      const subset = points.filter(p => p.var_type === st);
+      return {
+        x: subset.map(p => p.x),
+        y: subset.map(p => p.y),
+        customdata: subset.map(p => p.idx),
+        mode: "markers",
+        type: "scattergl",
+        name: st,
+        marker: { size: 3, color: SUBTYPE_COLORS[st] || "#888", opacity: 0.6 },
+        hovertemplate: `${st}<br>P=%{text:.4f} d<extra></extra>`,
+        text: subset.map(p => p.period),
+      };
+    });
+    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
+
+  } else {
+    // Continuous color scale
+    const vals = points.map(p => p[colorBy]);
+    const labelText = {period: "Period (d)", rmag: "r mag", z_qual: "z_qual"}[colorBy];
+    const cscale = colorBy === "rmag" ? "Viridis" : "Plasma";
+    const traces = [{
+      x: points.map(p => p.x),
+      y: points.map(p => p.y),
+      customdata: points.map(p => p.idx),
+      mode: "markers",
+      type: "scattergl",
+      marker: {
+        size: 3, opacity: 0.6,
+        color: vals,
+        colorscale: cscale,
+        colorbar: { title: labelText, thickness: 15, len: 0.6,
+                    tickfont: {color: "#8b949e"}, titlefont: {color: "#c9d1d9"} },
+        reversescale: colorBy === "rmag",
+      },
+      hovertemplate: `${labelText}=%{marker.color:.4f}<extra></extra>`,
+    }];
+    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
+  }
+
+  scatterDiv.removeAllListeners && scatterDiv.removeAllListeners("plotly_click");
+  scatterDiv.on("plotly_click", function(data) {
+    const pt = data.points[0];
+    const idx = pt.customdata;
+    showSource(idx);
+  });
+}
+
+function scatterLayout() {
+  return {
+    paper_bgcolor: "#0d1117",
+    plot_bgcolor: "#0d1117",
+    margin: {l: 40, r: 20, t: 10, b: 40},
+    xaxis: {title: "UMAP 1", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
+    yaxis: {title: "UMAP 2", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
+    legend: {font: {color: "#c9d1d9"}, bgcolor: "rgba(0,0,0,0)"},
+    dragmode: "pan",
+  };
+}
+
+function showSource(idx) {
+  const src = points.find(p => p.idx === idx);
+  if (!src) return;
+
+  // Update info card
+  const cls = CLASS_NAMES[src.label] || src.label;
+  document.getElementById("info-content").innerHTML = `
+    <div class="info-row"><span class="info-label">Class</span><span class="info-value">${cls}</span></div>
+    <div class="info-row"><span class="info-label">Subtype</span><span class="info-value">${src.var_type}</span></div>
+    <div class="info-row"><span class="info-label">Period</span><span class="info-value">${src.period ? src.period.toFixed(6) + " d" : "—"}</span></div>
+    <div class="info-row"><span class="info-label">r mag</span><span class="info-value">${src.rmag ? src.rmag.toFixed(2) : "—"}</span></div>
+    <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual.toFixed(4)}</span></div>
+  `;
+
+  // Plot phase-folded light curve
+  const lc = lightcurves[String(idx)];
+  const lcDiv = document.getElementById("lc-plot");
+  const placeholder = document.getElementById("lc-placeholder");
+  const note = document.getElementById("lc-note");
+
+  if (!lc) {
+    lcDiv.innerHTML = "";
+    placeholder.style.display = "flex";
+    placeholder.textContent = "No light curve data for this source";
+    note.textContent = "";
+    return;
+  }
+  placeholder.style.display = "none";
+
+  // Filter NaN bins
+  const validIdx = [];
+  for (let i = 0; i < lc.flux.length; i++) {
+    if (lc.flux[i] !== null && !isNaN(lc.flux[i])) validIdx.push(i);
+  }
+
+  const phase = validIdx.map(i => lc.phase[i]);
+  const flux = validIdx.map(i => lc.flux[i]);
+  const err = validIdx.map(i => lc.err[i]);
+
+  // Show two cycles
+  const phase2 = [...phase, ...phase.map(p => p + 1)];
+  const flux2 = [...flux, ...flux];
+  const err2 = [...err, ...err];
+
+  const color = CLASS_COLORS[src.label] || "#888";
+
+  const traces = [
+    {
+      x: phase2, y: flux2,
+      error_y: {type: "data", array: err2, visible: true, thickness: 1, width: 0, color: color},
+      mode: "markers",
+      marker: {size: 5, color: color, opacity: 0.8},
+      hovertemplate: "phase=%{x:.3f}<br>flux=%{y:.4f}<extra></extra>",
+    },
+  ];
+
+  const layout = {
+    paper_bgcolor: "#0d1117",
+    plot_bgcolor: "#161b22",
+    margin: {l: 55, r: 15, t: 10, b: 45},
+    xaxis: {title: "Phase (2 cycles)", color: "#8b949e", gridcolor: "#21262d",
+            range: [0, 2], dtick: 0.5},
+    yaxis: {title: "Normalized flux", color: "#8b949e", gridcolor: "#21262d"},
+    showlegend: false,
+  };
+
+  Plotly.react(lcDiv, traces, layout, {responsive: true, displayModeBar: false});
+  note.textContent = `${lc.n_obs} observations, 50 phase bins`;
+}
+
+init();
+</script>
+</body>
+</html>
