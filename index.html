@@ -9,9 +9,15 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
          background: #0d1117; color: #c9d1d9; }
-  header { padding: 16px 24px; border-bottom: 1px solid #21262d; }
+  header { padding: 16px 24px; border-bottom: 1px solid #21262d;
+           display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  header .titles { min-width: 0; }
   header h1 { font-size: 20px; font-weight: 600; }
   header p { font-size: 13px; color: #8b949e; margin-top: 4px; }
+  header .repo-link { font-size: 12px; color: #8b949e; text-decoration: none;
+                      border: 1px solid #30363d; border-radius: 6px;
+                      padding: 6px 10px; white-space: nowrap; flex-shrink: 0; }
+  header .repo-link:hover { color: #c9d1d9; border-color: #8b949e; }
   .container { display: flex; height: calc(100vh - 80px); }
   .left { flex: 1; min-width: 0; padding: 12px; }
   .right { width: 420px; border-left: 1px solid #21262d; padding: 16px;
@@ -41,8 +47,11 @@
 <body>
 
 <header>
-  <h1>ZTF Light Curve Embedding Explorer</h1>
-  <p>Self-supervised transformer embeddings (z<sub>sig</sub>) of 14k ZTF periodic variables, projected to 2D with UMAP. Click a point to see its phase-folded light curve.</p>
+  <div class="titles">
+    <h1>ZTF Light Curve Embedding Explorer</h1>
+    <p>Self-supervised transformer embeddings (z<sub>sig</sub>) of 14k ZTF periodic variables, projected to 2D with UMAP. Click a point to see its phase-folded light curve.</p>
+  </div>
+  <a class="repo-link" href="https://github.com/emmachickles/ztf-embedding-demo" target="_blank" rel="noopener">View on GitHub &#8599;</a>
 </header>
 
 <div class="container">
