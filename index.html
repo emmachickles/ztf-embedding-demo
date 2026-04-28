@@ -83,6 +83,11 @@
 <div class="container">
   <div class="left">
     <div class="controls">
+      <label>View:</label>
+      <select id="view-select">
+        <option value="umap">UMAP</option>
+        <option value="radec">RA / Dec</option>
+      </select>
       <label>Color by:</label>
       <select id="color-select">
         <option value="var_type">Variability type</option>
@@ -170,10 +175,13 @@ const VAR_TYPE_BIOS = {
 };
 
 let points = null;
+let pointsByIdx = null;     // Map<idx, point> for O(1) lookup
 let manifest = null;
 let hrGrid = null;
 let currentSource = null;
 let currentLC = null;       // last successfully loaded LC dict
+let currentView = "umap";   // "umap" or "radec"
+let currentColorBy = "var_type";
 
 // LC shards are loaded lazily; cache the last few in memory
 const lcCache = new Map();
@@ -186,13 +194,21 @@ async function init() {
     fetch("hr_background.json").then(r => r.json()),
   ]);
   points = pts;
+  pointsByIdx = new Map(pts.map(p => [p.idx, p]));
   manifest = mf;
   hrGrid = hr;
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
   document.getElementById("color-select").addEventListener("change", e => {
-    renderScatter(e.target.value);
+    currentColorBy = e.target.value;
+    renderScatter(currentColorBy);
+  });
+  document.getElementById("view-select").addEventListener("change", e => {
+    const newView = e.target.value;
+    if (newView === currentView) return;
+    currentView = newView;
+    animateViewChange();
   });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
     r.addEventListener("change", () => {
@@ -299,6 +315,11 @@ function populateBioGrid() {
   grid.innerHTML = html;
 }
 
+function viewXY(p, view) {
+  if (view === "radec") return [p.ra, p.dec];
+  return [p.x, p.y];
+}
+
 function renderScatter(colorBy) {
   const div = document.getElementById("scatter");
   let traces;
@@ -310,8 +331,9 @@ function renderScatter(colorBy) {
     });
     traces = Object.keys(groups).sort().map(vt => {
       const subset = groups[vt];
+      const xy = subset.map(p => viewXY(p, currentView));
       return {
-        x: subset.map(p => p.x), y: subset.map(p => p.y),
+        x: xy.map(v => v[0]), y: xy.map(v => v[1]),
         customdata: subset.map(p => p.idx),
         mode: "markers", type: "scattergl",
         name: `${vt} (${subset.length.toLocaleString()})`,
@@ -327,8 +349,9 @@ function renderScatter(colorBy) {
       bp_rp: "BP–RP", abs_g: "Abs G",
     }[colorBy];
     const cscale = colorBy === "rmag" || colorBy === "abs_g" ? "Viridis" : "Plasma";
+    const xy = points.map(p => viewXY(p, currentView));
     traces = [{
-      x: points.map(p => p.x), y: points.map(p => p.y),
+      x: xy.map(v => v[0]), y: xy.map(v => v[1]),
       customdata: points.map(p => p.idx),
       mode: "markers", type: "scattergl",
       marker: {
@@ -353,14 +376,53 @@ function renderScatter(colorBy) {
 }
 
 function scatterLayout() {
+  const isRaDec = currentView === "radec";
   return {
     paper_bgcolor: "#0d1117", plot_bgcolor: "#0d1117",
-    margin: {l: 40, r: 20, t: 10, b: 40},
-    xaxis: {title: "UMAP 1", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
-    yaxis: {title: "UMAP 2", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
+    margin: {l: 50, r: 20, t: 10, b: 40},
+    xaxis: {
+      title: isRaDec ? "RA (deg)" : "UMAP 1",
+      color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
+      range: isRaDec ? [0, 360] : undefined,
+      autorange: isRaDec ? false : true,
+    },
+    yaxis: {
+      title: isRaDec ? "Dec (deg)" : "UMAP 2",
+      color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
+      range: isRaDec ? [-30, 90] : undefined,
+      autorange: isRaDec ? false : true,
+    },
     legend: {font: {color: "#c9d1d9", size: 10}, bgcolor: "rgba(0,0,0,0)"},
     dragmode: "pan",
   };
+}
+
+// Smooth Plotly.animate from current view to currentView. Reuses existing
+// trace structure (legend, color, etc.); only x/y arrays change.
+function animateViewChange() {
+  const div = document.getElementById("scatter");
+  const traceCount = (div.data || []).length;
+  if (traceCount === 0) { renderScatter(currentColorBy); return; }
+
+  const newData = (div.data || []).map(tr => {
+    // Recover the per-point sources by walking customdata → points lookup
+    const cd = tr.customdata || [];
+    const xs = new Array(cd.length);
+    const ys = new Array(cd.length);
+    for (let i = 0; i < cd.length; i++) {
+      const p = pointsByIdx.get(cd[i]);
+      if (!p) { xs[i] = null; ys[i] = null; continue; }
+      const [x, y] = viewXY(p, currentView);
+      xs[i] = x; ys[i] = y;
+    }
+    return { x: xs, y: ys };
+  });
+
+  Plotly.animate(div, { data: newData },
+    { transition: { duration: 1200, easing: "cubic-in-out" },
+      frame:      { duration: 1200, redraw: false } });
+  // Layout (axis titles, ranges) doesn't animate; relayout immediately.
+  Plotly.relayout(div, scatterLayout());
 }
 
 // ── HR diagram ─────────────────────────────────────────────────────
@@ -447,7 +509,7 @@ async function loadShard(shardIdx) {
 }
 
 async function showSource(idx) {
-  const src = points.find(p => p.idx === idx);
+  const src = pointsByIdx ? pointsByIdx.get(idx) : points.find(p => p.idx === idx);
   if (!src) return;
   currentSource = src;
   // Update URL hash without triggering hashchange handler
