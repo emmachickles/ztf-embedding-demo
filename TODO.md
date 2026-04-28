@@ -11,7 +11,15 @@
   - [ ] Re-run export (in progress, ~6 min ETA last check)
   - [ ] Smoke-test: click points, toggle raw/folded, verify shard fetch sizes
 
-- [x] **Per-layer inference script** — `embed_chen2020_per_layer.py` written (uses forward hooks on each transformer encoder layer + masked-mean-pool). Not yet run; will produce `(n_layers, n_sources, d_model)` tensor for TODO #3.
+- [x] **Per-layer inference script** — `embed_chen2020_per_layer.py` written, run on the 25K subset; `per_layer.npz` is `(6, 25565, 256)`.
+
+## Shipped (live)
+
+- [x] **Initial 25K demo** published at <https://emmachickles.github.io/ztf-embedding-demo/>, GH Pages enabled via `gh` CLI. ~512 MB bundle.
+- [x] **Quick-win UX** (TODO #1): search by RA/Dec, random source, permalink (`#idx` deep link + clipboard share), class-info modal with one-line biographies, class-aware LC marker styling (r=class color, g=lighter+triangle, i=darker+square).
+- [x] **RA/Dec smooth morph** (TODO #2 Stage A): View dropdown with `Plotly.animate()` between UMAP and (RA, Dec) over 1.2 s.
+- [x] **Lomb–Scargle periodogram side panel** (TODO #4 first item): JS LS on a 600-point log-spaced period grid, with catalog period + 0.5×/2× harmonic markers.
+- [x] **Highlight kNN**: toggle that dims the scatter to the clicked source's 20 z_sig nearest neighbors (k-NN graph precomputed and shipped as `knn.json`, ~2.9 MB).
 
 ## Backlog (reordered)
 
@@ -99,6 +107,8 @@ Click → besides LC and HR, show a Blender-rendered animation of a physical mod
 | Mira | AGB envelope pulsation, dust | Too heavy for live use — pre-rendered only |
 
 **Plan.** Pre-render ~30 representative animations (3 per subtype) parameterized by 3–5 fit values from the LC. On click, the source's class picks the animation; fit values pick a variant. No live Blender call — that's the trick.
+
+**Scale reference.** Every animation must include a familiar astronomical object for scale (Sun for stellar-radius systems, Earth for compact systems, the inner solar system for very-wide binaries). A small inset showing the Sun beside an EW contact binary tells the audience *more* about that system in one image than any number of fit values would. Pick the scale per subtype so the comparison is interpretive, not just decorative.
 
 Reference pipeline: `~/projects/blender_astro`.
 

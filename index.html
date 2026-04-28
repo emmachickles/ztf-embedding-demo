@@ -88,6 +88,10 @@
         <option value="umap">UMAP</option>
         <option value="radec">RA / Dec</option>
       </select>
+      <label>Layer:</label>
+      <select id="layer-select" title="UMAP of each transformer layer's pooled output. Only active in UMAP view.">
+        <option value="default">Default (z_sig)</option>
+      </select>
       <label>Color by:</label>
       <select id="color-select">
         <option value="var_type">Variability type</option>
@@ -188,6 +192,8 @@ let pointsByIdx = null;     // Map<idx, point> for O(1) lookup
 let manifest = null;
 let hrGrid = null;
 let knn = null;             // length-N array of length-k arrays (NN indices)
+let perLayerUmap = null;    // {n_layers, names, coords}
+let currentLayer = "default";
 let currentSource = null;
 let currentLC = null;       // last successfully loaded LC dict
 let currentView = "umap";   // "umap" or "radec"
@@ -199,17 +205,22 @@ const lcCache = new Map();
 const LC_CACHE_LIMIT = 6;
 
 async function init() {
-  const [pts, mf, hr, kn] = await Promise.all([
+  const [pts, mf, hr, kn, pl] = await Promise.all([
     fetch("points.json").then(r => r.json()),
     fetch("manifest.json").then(r => r.json()),
     fetch("hr_background.json").then(r => r.json()),
     fetch("knn.json").then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch("per_layer_umap.json").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
   points = pts;
+  // Add positional index so per-layer coord lookups are O(1)
+  points.forEach((p, i) => { p.posIdx = i; });
   pointsByIdx = new Map(pts.map(p => [p.idx, p]));
   manifest = mf;
   hrGrid = hr;
   knn = kn;
+  perLayerUmap = pl;
+  populateLayerDropdown();
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
@@ -227,6 +238,14 @@ async function init() {
     highlightKnn = e.target.checked;
     if (highlightKnn && currentSource) applyKnnHighlight(currentSource.idx);
     else clearKnnHighlight();
+  });
+  document.getElementById("layer-select").addEventListener("change", e => {
+    const newLayer = e.target.value;
+    if (newLayer === currentLayer) return;
+    currentLayer = newLayer;
+    // Layer-toggle is meaningful only in UMAP view
+    if (currentView !== "umap") return;
+    animateViewChange();
   });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
     r.addEventListener("change", () => {
@@ -335,7 +354,30 @@ function populateBioGrid() {
 
 function viewXY(p, view) {
   if (view === "radec") return [p.ra, p.dec];
+  // UMAP view: use per-layer coords if a non-default layer is selected
+  if (currentLayer !== "default" && perLayerUmap) {
+    const layerIdx = perLayerUmap.names.indexOf(currentLayer);
+    if (layerIdx >= 0) {
+      const xy = perLayerUmap.coords[layerIdx][p.posIdx];
+      if (xy) return xy;
+    }
+  }
   return [p.x, p.y];
+}
+
+function populateLayerDropdown() {
+  const sel = document.getElementById("layer-select");
+  if (!perLayerUmap) {
+    sel.disabled = true;
+    sel.title = "Per-layer UMAP not available (per_layer_umap.json missing).";
+    return;
+  }
+  // Add one option per layer name
+  for (const n of perLayerUmap.names) {
+    const opt = document.createElement("option");
+    opt.value = n; opt.textContent = n;
+    sel.appendChild(opt);
+  }
 }
 
 function renderScatter(colorBy) {
