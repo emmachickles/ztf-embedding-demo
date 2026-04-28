@@ -20,6 +20,25 @@
 - [x] **RA/Dec smooth morph** (TODO #2 Stage A): View dropdown with `Plotly.animate()` between UMAP and (RA, Dec) over 1.2 s.
 - [x] **Lomb–Scargle periodogram side panel** (TODO #4 first item): JS LS on a 600-point log-spaced period grid, with catalog period + 0.5×/2× harmonic markers.
 - [x] **Highlight kNN**: toggle that dims the scatter to the clicked source's 20 z_sig nearest neighbors (k-NN graph precomputed and shipped as `knn.json`, ~2.9 MB).
+- [x] **Layer toggle + architecture popup** (TODO #3a): Layer dropdown shows UMAP of each transformer layer's masked-mean-pooled output (`per_layer_umap.json`, 6 layers + final z_sig); smooth animate between them. "Model" button opens an HTML/CSS architecture diagram.
+- [x] **Period–luminosity diagram side panel** (TODO #4 third item): 5th right-column panel; clicking a point in P–L jumps to that source.
+- [x] **Gaia DR3 RUWE + proper motions** via STILTS cross-match against `I/355/gaiadr3` for all 25K sources. Adds RUWE / pmra / pmdec / DR3 source_id to `points.json` and three new color-by axes.
+- [x] **Galaxy (X–Y) bird's-eye view** (TODO #2 Stage C): galactocentric coords from `astropy.coordinates.Galactocentric` for the ~9.5K sources with parallax SNR > 5; new "Galaxy (X–Y)" view option morphs to (gx, gy) with the Sun at (−8.122, 0) marked.
+- [x] **Per-class HR isolines toggle**: optional contour overlay (40/70/90% of each class's density) over the HR-diagram backdrop. Toggleable.
+- [x] **Manuscript figure script** (TODO #7): `manuscript_figures.py` produces 6 publication-quality PDFs from `points.json`. Now in `ztf-ssl-transformer/figs/manuscript/`.
+- [x] **Pin & Compare** for the LC panel: pin a source, then clicking another renders both LCs in the same plot (pinned dimmer/smaller). Each folds on its own period.
+- [x] **Lasso → aggregate stats**: lasso-mode toggle; selecting a region opens a modal with class composition, period and r-mag stats for the selection. Works in any view.
+- [x] **z_sig nearest-neighbor chips** in the info card: 6 clickable class-colored chips for direct navigation through the embedding's neighborhood (lighter alternative to the full k-NN LC strip).
+
+## Still in the backlog
+
+- **Proper-motion arrows** in RA/Dec view (sub-feature of TODO #2). Have pmra/pmdec; just needs JS quiver-style annotation overlay limited to the visible / selected subset.
+- **Aladin Lite full-screen sky context** (TODO #2 Stage B). Bigger lift than Stage A — separate panel-swap, no morph.
+- **Per-class Gaia DR3 vari_\*** (TODO #5). STILTS cross-match against `I/358/vrrlyrae` and `I/358/vcepheid` for class-specific physics. Would add color-by axes for [Fe/H] (RR), pulsation mode, etc. Limited to RR/RRc/CEP/CEPII subsets.
+- **3D UMAP toggle** (TODO #6). Code path branches between 2D scattergl and 3D scatter3d; saved this for daylight to make sure the 2D↔3D state machine is clean.
+- **k-NN LC strip** (richer version of the chips): five mini phase-folded LCs of the nearest neighbors. The chips are a starter; the strip is the upgrade.
+- **Per-epoch / training-trajectory UMAPs** (TODO #3 stretch). Needs intermediate checkpoints from training.
+- **Blender visualizations** (TODO #8). The reach goal.
 
 ## Backlog (reordered)
 
