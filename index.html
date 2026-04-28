@@ -121,6 +121,9 @@
         <option value="z_qual">z_qual (noise)</option>
         <option value="bp_rp">Gaia BP–RP</option>
         <option value="abs_g">Gaia abs G</option>
+        <option value="ruwe">Gaia RUWE</option>
+        <option value="pmra">pm RA</option>
+        <option value="pmdec">pm Dec</option>
       </select>
       <input type="text" id="search-input" placeholder="RA Dec (deg)" title="Type RA Dec in decimal degrees, e.g. 276.85 25.13">
       <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
@@ -497,6 +500,7 @@ function renderScatter(colorBy) {
     const labelText = {
       period: "Period (d)", rmag: "r mag", z_qual: "z_qual",
       bp_rp: "BP–RP", abs_g: "Abs G",
+      ruwe: "RUWE", pmra: "pm RA (mas/yr)", pmdec: "pm Dec (mas/yr)",
     }[colorBy];
     const cscale = colorBy === "rmag" || colorBy === "abs_g" ? "Viridis" : "Plasma";
     const xy = points.map(p => viewXY(p, currentView));
@@ -742,6 +746,8 @@ async function showSource(idx) {
     <div class="info-row"><span class="info-label">RA, Dec</span><span class="info-value">${src.ra ?? "—"}, ${src.dec ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">r mag</span><span class="info-value">${src.rmag ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">BP–RP / abs G</span><span class="info-value">${src.bp_rp ?? "—"} / ${src.abs_g ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">RUWE</span><span class="info-value">${src.ruwe ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">pm (mas/yr)</span><span class="info-value">${src.pmra != null ? src.pmra.toFixed(2) : "—"}, ${src.pmdec != null ? src.pmdec.toFixed(2) : "—"}</span></div>
     <div class="info-row"><span class="info-label">LS sig</span><span class="info-value">${src.ls_sig ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual ?? "—"}</span></div>
   `;
