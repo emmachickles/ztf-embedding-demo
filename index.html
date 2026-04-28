@@ -102,6 +102,10 @@
       <button id="random-btn" title="Show a random source">🎲 Random</button>
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
       <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
+      <label style="margin-left: 8px;">
+        <input type="checkbox" id="hl-knn" title="When on, clicking a source dims everything else and highlights its 20 nearest neighbors in z_sig space">
+        Highlight kNN
+      </label>
     </div>
     <div id="scatter"></div>
   </div>
@@ -183,25 +187,29 @@ let points = null;
 let pointsByIdx = null;     // Map<idx, point> for O(1) lookup
 let manifest = null;
 let hrGrid = null;
+let knn = null;             // length-N array of length-k arrays (NN indices)
 let currentSource = null;
 let currentLC = null;       // last successfully loaded LC dict
 let currentView = "umap";   // "umap" or "radec"
 let currentColorBy = "var_type";
+let highlightKnn = false;
 
 // LC shards are loaded lazily; cache the last few in memory
 const lcCache = new Map();
 const LC_CACHE_LIMIT = 6;
 
 async function init() {
-  const [pts, mf, hr] = await Promise.all([
+  const [pts, mf, hr, kn] = await Promise.all([
     fetch("points.json").then(r => r.json()),
     fetch("manifest.json").then(r => r.json()),
     fetch("hr_background.json").then(r => r.json()),
+    fetch("knn.json").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
   points = pts;
   pointsByIdx = new Map(pts.map(p => [p.idx, p]));
   manifest = mf;
   hrGrid = hr;
+  knn = kn;
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
@@ -214,6 +222,11 @@ async function init() {
     if (newView === currentView) return;
     currentView = newView;
     animateViewChange();
+  });
+  document.getElementById("hl-knn").addEventListener("change", e => {
+    highlightKnn = e.target.checked;
+    if (highlightKnn && currentSource) applyKnnHighlight(currentSource.idx);
+    else clearKnnHighlight();
   });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
     r.addEventListener("change", () => {
@@ -378,6 +391,9 @@ function renderScatter(colorBy) {
     const pt = data.points[0];
     showSource(pt.customdata);
   });
+
+  // Restore kNN highlight if it was active
+  if (highlightKnn && currentSource) applyKnnHighlight(currentSource.idx);
 }
 
 function scatterLayout() {
@@ -400,6 +416,71 @@ function scatterLayout() {
     legend: {font: {color: "#c9d1d9", size: 10}, bgcolor: "rgba(0,0,0,0)"},
     dragmode: "pan",
   };
+}
+
+// ── kNN highlight overlay ─────────────────────────────────────────
+// Strategy: add a single overlay trace with the source + its kNN
+// positions, dim main traces underneath. Survives view-toggle because
+// its customdata gets re-mapped through pointsByIdx in animateViewChange.
+const KNN_TRACE_TAG = "__knn_highlight__";
+
+function buildKnnTrace(srcIdx) {
+  if (!knn) return null;
+  const ptIdx = points.findIndex(p => p.idx === srcIdx);
+  if (ptIdx < 0) return null;
+  const neighborPos = knn[ptIdx] || [];
+  const includeIdxs = [srcIdx, ...neighborPos.map(i => points[i].idx)];
+  const xs = [], ys = [], colors = [];
+  for (let i = 0; i < includeIdxs.length; i++) {
+    const p = pointsByIdx.get(includeIdxs[i]);
+    if (!p) continue;
+    const [x, y] = viewXY(p, currentView);
+    xs.push(x); ys.push(y);
+    colors.push(i === 0 ? "#ffffff" : (VAR_TYPE_COLORS[p.var_type] || "#58a6ff"));
+  }
+  return {
+    x: xs, y: ys,
+    customdata: includeIdxs,
+    mode: "markers", type: "scattergl",
+    name: KNN_TRACE_TAG,
+    marker: {
+      size: xs.map((_, i) => i === 0 ? 14 : 7),
+      color: colors,
+      line: { color: "#fff", width: 1 },
+      symbol: xs.map((_, i) => i === 0 ? "star" : "circle"),
+      opacity: 1.0,
+    },
+    hovertemplate: "%{customdata}<extra></extra>",
+    showlegend: false,
+  };
+}
+
+function applyKnnHighlight(srcIdx) {
+  const div = document.getElementById("scatter");
+  if (!div.data) return;
+  const tr = buildKnnTrace(srcIdx);
+  if (!tr) return;
+  // Dim every existing trace's marker.opacity to 0.08
+  const dimUpdate = { "marker.opacity": (div.data || []).map(() => 0.08) };
+  Plotly.restyle(div, dimUpdate);
+  // Remove any prior highlight trace, then add this one
+  removeKnnTraceInPlace();
+  Plotly.addTraces(div, tr);
+}
+
+function clearKnnHighlight() {
+  const div = document.getElementById("scatter");
+  if (!div.data) return;
+  removeKnnTraceInPlace();
+  // Restore main-trace opacity
+  Plotly.restyle(div, { "marker.opacity": (div.data || []).map(() => 0.55) });
+}
+
+function removeKnnTraceInPlace() {
+  const div = document.getElementById("scatter");
+  const indices = [];
+  (div.data || []).forEach((t, i) => { if (t.name === KNN_TRACE_TAG) indices.push(i); });
+  if (indices.length) Plotly.deleteTraces(div, indices);
 }
 
 // Smooth Plotly.animate from current view to currentView. Reuses existing
@@ -562,6 +643,7 @@ async function showSource(idx) {
   currentLC = lc;
   renderLC(src, lc);
   renderPeriodogram(src, lc);
+  if (highlightKnn) applyKnnHighlight(idx);
 }
 
 // ── Lomb-Scargle periodogram (computed in-browser) ─────────────────
