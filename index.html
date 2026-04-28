@@ -8,40 +8,44 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         background: #0d1117; color: #c9d1d9; }
-  header { padding: 16px 24px; border-bottom: 1px solid #21262d;
+         background: #0d1117; color: #c9d1d9; overflow: hidden; }
+  header { padding: 14px 24px; border-bottom: 1px solid #21262d;
            display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   header .titles { min-width: 0; }
-  header h1 { font-size: 20px; font-weight: 600; }
-  header p { font-size: 13px; color: #8b949e; margin-top: 4px; }
+  header h1 { font-size: 19px; font-weight: 600; }
+  header p { font-size: 12px; color: #8b949e; margin-top: 4px; }
   header .repo-link { font-size: 12px; color: #8b949e; text-decoration: none;
                       border: 1px solid #30363d; border-radius: 6px;
                       padding: 6px 10px; white-space: nowrap; flex-shrink: 0; }
   header .repo-link:hover { color: #c9d1d9; border-color: #8b949e; }
-  .container { display: flex; height: calc(100vh - 80px); }
-  .left { flex: 1; min-width: 0; padding: 12px; }
-  .right { width: 420px; border-left: 1px solid #21262d; padding: 16px;
-           display: flex; flex-direction: column; }
-  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
-  .controls label { font-size: 13px; color: #8b949e; }
+  .container { display: flex; height: calc(100vh - 70px); }
+  .left { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; }
+  .right { width: 440px; border-left: 1px solid #21262d; padding: 12px;
+           display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .controls label { font-size: 12px; color: #8b949e; }
   .controls select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
-                     border-radius: 4px; padding: 4px 8px; font-size: 13px; }
-  #scatter { width: 100%; height: 100%; }
+                     border-radius: 4px; padding: 3px 8px; font-size: 12px; }
+  #scatter { width: 100%; flex: 1; min-height: 0; }
   .info-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-               padding: 16px; margin-bottom: 12px; }
-  .info-card h3 { font-size: 14px; color: #58a6ff; margin-bottom: 8px; }
-  .info-row { display: flex; justify-content: space-between; font-size: 13px;
-              padding: 3px 0; }
+               padding: 12px; flex-shrink: 0; }
+  .info-card h3 { font-size: 13px; color: #58a6ff; margin-bottom: 6px; }
+  .info-row { display: flex; justify-content: space-between; font-size: 12px;
+              padding: 2px 0; }
   .info-label { color: #8b949e; }
-  .info-value { color: #c9d1d9; font-family: "SF Mono", monospace; }
-  #lc-plot { width: 100%; flex: 1; min-height: 250px; }
+  .info-value { color: #c9d1d9; font-family: "SF Mono", Menlo, monospace; }
+  .panel { background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
+           padding: 6px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .panel-title { font-size: 11px; color: #8b949e; text-transform: uppercase;
+                 letter-spacing: 0.05em; padding: 4px 6px 0; }
+  .panel-plot { width: 100%; flex: 1; min-height: 0; }
   .placeholder { display: flex; align-items: center; justify-content: center;
-                 height: 100%; color: #484f58; font-size: 14px; text-align: center;
-                 line-height: 1.6; }
+                 height: 100%; color: #484f58; font-size: 12px; text-align: center;
+                 line-height: 1.5; padding: 20px; }
   #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%;
              background: #0d1117; display: flex; align-items: center;
              justify-content: center; z-index: 100; font-size: 16px; }
-  .legend-note { font-size: 11px; color: #484f58; margin-top: 4px; }
+  .legend-note { font-size: 11px; color: #484f58; padding: 4px 6px 0; }
 </style>
 </head>
 <body>
@@ -49,7 +53,7 @@
 <header>
   <div class="titles">
     <h1>ZTF Light Curve Embedding Explorer</h1>
-    <p>Self-supervised transformer embeddings (z<sub>sig</sub>) of 14k ZTF periodic variables, projected to 2D with UMAP. Click a point to see its phase-folded light curve.</p>
+    <p>Self-supervised transformer (z<sub>sig</sub>) on the Chen+2020 catalog (~25 K periodic variables, 11 types). Click a point to see its raw or phase-folded light curve and Gaia HR-diagram position.</p>
   </div>
   <a class="repo-link" href="https://github.com/emmachickles/ztf-embedding-demo" target="_blank" rel="noopener">View on GitHub &#8599;</a>
 </header>
@@ -59,11 +63,12 @@
     <div class="controls">
       <label>Color by:</label>
       <select id="color-select">
-        <option value="label">Class</option>
-        <option value="var_type">Subtype</option>
+        <option value="var_type">Variability type</option>
         <option value="period">Period</option>
-        <option value="rmag">Magnitude</option>
+        <option value="rmag">r magnitude</option>
         <option value="z_qual">z_qual (noise)</option>
+        <option value="bp_rp">Gaia BP–RP</option>
+        <option value="abs_g">Gaia abs G</option>
       </select>
     </div>
     <div id="scatter"></div>
@@ -72,205 +77,328 @@
     <div class="info-card" id="info-card">
       <h3>Source Info</h3>
       <div id="info-content">
-        <div class="placeholder">Click a point in the scatter plot<br>to view its light curve</div>
+        <div class="placeholder" style="height: auto; padding: 8px 0;">Click a point in the scatter plot.</div>
       </div>
     </div>
-    <div id="lc-plot">
-      <div class="placeholder" id="lc-placeholder">Phase-folded light curve will appear here</div>
+    <div class="panel">
+      <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 6px;">
+        <span>Light curve</span>
+        <span style="text-transform: none; letter-spacing: 0;">
+          <label style="font-size: 11px; color: #8b949e;">
+            <input type="radio" name="lc-view" value="folded" checked> phase-folded
+          </label>
+          <label style="font-size: 11px; color: #8b949e; margin-left: 8px;">
+            <input type="radio" name="lc-view" value="raw"> raw
+          </label>
+        </span>
+      </div>
+      <div id="lc-plot" class="panel-plot"></div>
+      <div class="legend-note" id="lc-note"></div>
     </div>
-    <div class="legend-note" id="lc-note"></div>
+    <div class="panel">
+      <div class="panel-title">Gaia HR diagram</div>
+      <div id="hr-plot" class="panel-plot"></div>
+    </div>
   </div>
 </div>
 
-<div id="loading">Loading data...</div>
+<div id="loading">Loading data&hellip;</div>
 
 <script>
-const CLASS_COLORS = {
-  RRL: "#636EFA",
-  EB:  "#00CC96",
-  DSCT:"#EF553B",
-};
-const CLASS_NAMES = {
-  RRL: "RR Lyrae",
-  EB:  "Eclipsing Binary",
-  DSCT: "\u03B4 Scuti",
-};
-const SUBTYPE_COLORS = {
-  RR:  "#636EFA",
-  RRc: "#AB63FA",
-  EA:  "#00CC96",
-  EW:  "#19D3F3",
-  DSCT:"#EF553B",
+// ── Color palette for var_types (Plotly D3 qualitative ordering) ──
+const VAR_TYPE_COLORS = {
+  RR:    "#1f77b4",
+  RRc:   "#aec7e8",
+  EW:    "#2ca02c",
+  EA:    "#98df8a",
+  DSCT:  "#d62728",
+  RSCVN: "#ff7f0e",
+  BYDra: "#ffbb78",
+  SR:    "#9467bd",
+  CEP:   "#e377c2",
+  CEPII: "#f7b6d2",
+  Mira:  "#8c564b",
 };
 
 let points = null;
-let lightcurves = null;
+let manifest = null;
+let hrGrid = null;
+let currentSource = null;
+let currentLC = null;       // last successfully loaded LC dict
+
+// LC shards are loaded lazily; cache the last few in memory
+const lcCache = new Map();
+const LC_CACHE_LIMIT = 6;
 
 async function init() {
-  const [ptsResp, lcResp] = await Promise.all([
+  const [pts, mf, hr] = await Promise.all([
     fetch("points.json").then(r => r.json()),
-    fetch("lightcurves.json").then(r => r.json()),
+    fetch("manifest.json").then(r => r.json()),
+    fetch("hr_background.json").then(r => r.json()),
   ]);
-  points = ptsResp;
-  lightcurves = lcResp;
+  points = pts;
+  manifest = mf;
+  hrGrid = hr;
   document.getElementById("loading").style.display = "none";
-  renderScatter("label");
+  renderScatter("var_type");
+  drawHRBackdrop();
   document.getElementById("color-select").addEventListener("change", e => {
     renderScatter(e.target.value);
+  });
+  document.querySelectorAll('input[name="lc-view"]').forEach(r => {
+    r.addEventListener("change", () => {
+      lcView = document.querySelector('input[name="lc-view"]:checked').value;
+      if (currentLC && currentSource) renderLC(currentSource, currentLC);
+    });
   });
 }
 
 function renderScatter(colorBy) {
-  const scatterDiv = document.getElementById("scatter");
+  const div = document.getElementById("scatter");
+  let traces;
 
-  if (colorBy === "label") {
-    // One trace per class so legend toggles work
-    const traces = Object.keys(CLASS_COLORS).map(cls => {
-      const subset = points.filter(p => p.label === cls);
+  if (colorBy === "var_type") {
+    const groups = {};
+    points.forEach(p => {
+      (groups[p.var_type] ||= []).push(p);
+    });
+    traces = Object.keys(groups).sort().map(vt => {
+      const subset = groups[vt];
       return {
-        x: subset.map(p => p.x),
-        y: subset.map(p => p.y),
+        x: subset.map(p => p.x), y: subset.map(p => p.y),
         customdata: subset.map(p => p.idx),
-        mode: "markers",
-        type: "scattergl",
-        name: CLASS_NAMES[cls] || cls,
-        marker: { size: 3, color: CLASS_COLORS[cls], opacity: 0.6 },
-        hovertemplate: `${CLASS_NAMES[cls]}<br>P=%{text:.4f} d<extra></extra>`,
+        mode: "markers", type: "scattergl",
+        name: `${vt} (${subset.length.toLocaleString()})`,
+        marker: { size: 3, color: VAR_TYPE_COLORS[vt] || "#888", opacity: 0.55 },
+        hovertemplate: `<b>${vt}</b><br>P=%{text:.4f} d<extra></extra>`,
         text: subset.map(p => p.period),
       };
     });
-    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
-
-  } else if (colorBy === "var_type") {
-    const subtypes = [...new Set(points.map(p => p.var_type))].sort();
-    const traces = subtypes.map(st => {
-      const subset = points.filter(p => p.var_type === st);
-      return {
-        x: subset.map(p => p.x),
-        y: subset.map(p => p.y),
-        customdata: subset.map(p => p.idx),
-        mode: "markers",
-        type: "scattergl",
-        name: st,
-        marker: { size: 3, color: SUBTYPE_COLORS[st] || "#888", opacity: 0.6 },
-        hovertemplate: `${st}<br>P=%{text:.4f} d<extra></extra>`,
-        text: subset.map(p => p.period),
-      };
-    });
-    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
-
   } else {
-    // Continuous color scale
     const vals = points.map(p => p[colorBy]);
-    const labelText = {period: "Period (d)", rmag: "r mag", z_qual: "z_qual"}[colorBy];
-    const cscale = colorBy === "rmag" ? "Viridis" : "Plasma";
-    const traces = [{
-      x: points.map(p => p.x),
-      y: points.map(p => p.y),
+    const labelText = {
+      period: "Period (d)", rmag: "r mag", z_qual: "z_qual",
+      bp_rp: "BP–RP", abs_g: "Abs G",
+    }[colorBy];
+    const cscale = colorBy === "rmag" || colorBy === "abs_g" ? "Viridis" : "Plasma";
+    traces = [{
+      x: points.map(p => p.x), y: points.map(p => p.y),
       customdata: points.map(p => p.idx),
-      mode: "markers",
-      type: "scattergl",
+      mode: "markers", type: "scattergl",
       marker: {
-        size: 3, opacity: 0.6,
+        size: 3, opacity: 0.55,
         color: vals,
         colorscale: cscale,
-        colorbar: { title: labelText, thickness: 15, len: 0.6,
+        colorbar: { title: labelText, thickness: 12, len: 0.55,
                     tickfont: {color: "#8b949e"}, titlefont: {color: "#c9d1d9"} },
-        reversescale: colorBy === "rmag",
+        reversescale: colorBy === "rmag" || colorBy === "abs_g",
       },
       hovertemplate: `${labelText}=%{marker.color:.4f}<extra></extra>`,
     }];
-    Plotly.react(scatterDiv, traces, scatterLayout(), {responsive: true});
   }
 
-  scatterDiv.removeAllListeners && scatterDiv.removeAllListeners("plotly_click");
-  scatterDiv.on("plotly_click", function(data) {
+  Plotly.react(div, traces, scatterLayout(), {responsive: true});
+
+  div.removeAllListeners && div.removeAllListeners("plotly_click");
+  div.on("plotly_click", data => {
     const pt = data.points[0];
-    const idx = pt.customdata;
-    showSource(idx);
+    showSource(pt.customdata);
   });
 }
 
 function scatterLayout() {
   return {
-    paper_bgcolor: "#0d1117",
-    plot_bgcolor: "#0d1117",
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#0d1117",
     margin: {l: 40, r: 20, t: 10, b: 40},
     xaxis: {title: "UMAP 1", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
     yaxis: {title: "UMAP 2", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d"},
-    legend: {font: {color: "#c9d1d9"}, bgcolor: "rgba(0,0,0,0)"},
+    legend: {font: {color: "#c9d1d9", size: 10}, bgcolor: "rgba(0,0,0,0)"},
     dragmode: "pan",
   };
 }
 
-function showSource(idx) {
-  const src = points.find(p => p.idx === idx);
-  if (!src) return;
+// ── HR diagram ─────────────────────────────────────────────────────
+function drawHRBackdrop() {
+  const div = document.getElementById("hr-plot");
+  const xs = (hrGrid.x_edges.slice(0, -1)).map((e, i) => 0.5 * (e + hrGrid.x_edges[i + 1]));
+  const ys = (hrGrid.y_edges.slice(0, -1)).map((e, i) => 0.5 * (e + hrGrid.y_edges[i + 1]));
+  const heatmap = {
+    z: hrGrid.log_density,
+    x: xs, y: ys,
+    type: "heatmap",
+    colorscale: [[0, "#0d1117"], [0.2, "#1f2630"], [0.5, "#39434f"], [1, "#a0aab5"]],
+    showscale: false,
+    hoverinfo: "skip",
+  };
+  Plotly.react(div, [heatmap, hrMarkerTrace(null, null, null)], hrLayout(), {responsive: true, displayModeBar: false});
+}
 
-  // Update info card
-  const cls = CLASS_NAMES[src.label] || src.label;
-  document.getElementById("info-content").innerHTML = `
-    <div class="info-row"><span class="info-label">Class</span><span class="info-value">${cls}</span></div>
-    <div class="info-row"><span class="info-label">Subtype</span><span class="info-value">${src.var_type}</span></div>
-    <div class="info-row"><span class="info-label">Period</span><span class="info-value">${src.period ? src.period.toFixed(6) + " d" : "—"}</span></div>
-    <div class="info-row"><span class="info-label">r mag</span><span class="info-value">${src.rmag ? src.rmag.toFixed(2) : "—"}</span></div>
-    <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual.toFixed(4)}</span></div>
-  `;
-
-  // Plot phase-folded light curve
-  const lc = lightcurves[String(idx)];
-  const lcDiv = document.getElementById("lc-plot");
-  const placeholder = document.getElementById("lc-placeholder");
-  const note = document.getElementById("lc-note");
-
-  if (!lc) {
-    lcDiv.innerHTML = "";
-    placeholder.style.display = "flex";
-    placeholder.textContent = "No light curve data for this source";
-    note.textContent = "";
-    return;
-  }
-  placeholder.style.display = "none";
-
-  // Filter NaN bins
-  const validIdx = [];
-  for (let i = 0; i < lc.flux.length; i++) {
-    if (lc.flux[i] !== null && !isNaN(lc.flux[i])) validIdx.push(i);
-  }
-
-  const phase = validIdx.map(i => lc.phase[i]);
-  const flux = validIdx.map(i => lc.flux[i]);
-  const err = validIdx.map(i => lc.err[i]);
-
-  // Show two cycles
-  const phase2 = [...phase, ...phase.map(p => p + 1)];
-  const flux2 = [...flux, ...flux];
-  const err2 = [...err, ...err];
-
-  const color = CLASS_COLORS[src.label] || "#888";
-
-  const traces = [
-    {
-      x: phase2, y: flux2,
-      error_y: {type: "data", array: err2, visible: true, thickness: 1, width: 0, color: color},
-      mode: "markers",
-      marker: {size: 5, color: color, opacity: 0.8},
-      hovertemplate: "phase=%{x:.3f}<br>flux=%{y:.4f}<extra></extra>",
-    },
-  ];
-
-  const layout = {
-    paper_bgcolor: "#0d1117",
-    plot_bgcolor: "#161b22",
-    margin: {l: 55, r: 15, t: 10, b: 45},
-    xaxis: {title: "Phase (2 cycles)", color: "#8b949e", gridcolor: "#21262d",
-            range: [0, 2], dtick: 0.5},
-    yaxis: {title: "Normalized flux", color: "#8b949e", gridcolor: "#21262d"},
+function hrMarkerTrace(bp_rp, abs_g, color) {
+  return {
+    x: bp_rp == null ? [] : [bp_rp],
+    y: abs_g == null ? [] : [abs_g],
+    type: "scatter", mode: "markers",
+    marker: { size: 14, color: color || "#fff",
+              line: {color: "#fff", width: 2}, symbol: "x-thin-open" },
+    hovertemplate: `BP–RP=%{x:.2f}<br>abs G=%{y:.2f}<extra></extra>`,
     showlegend: false,
   };
+}
 
-  Plotly.react(lcDiv, traces, layout, {responsive: true, displayModeBar: false});
-  note.textContent = `${lc.n_obs} observations, 50 phase bins`;
+function hrLayout() {
+  return {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#0d1117",
+    margin: {l: 45, r: 10, t: 4, b: 35},
+    xaxis: {title: "BP – RP", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
+            range: hrGrid.x_range},
+    yaxis: {title: "Absolute G", color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
+            range: [hrGrid.y_range[1], hrGrid.y_range[0]]},  // inverted (brighter up)
+  };
+}
+
+function updateHRMarker(src) {
+  const div = document.getElementById("hr-plot");
+  const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
+  Plotly.restyle(div, {
+    x: [[src.bp_rp]], y: [[src.abs_g]],
+    "marker.color": color, "marker.line.color": color,
+  }, [1]);
+}
+
+// ── Light curve loading (sharded, lazy) ────────────────────────────
+const FILTER_COLORS = { g: "#3aa53a", r: "#d63a3a" };
+let lcView = "folded";  // toggled by radio buttons
+
+async function loadShard(shardIdx) {
+  if (lcCache.has(shardIdx)) return lcCache.get(shardIdx);
+  const dir = manifest.raw_lightcurves_dir;
+  if (!dir) throw new Error("manifest.raw_lightcurves_dir missing");
+  const path = `${dir}shard_${String(shardIdx).padStart(4, "0")}.json`;
+  const data = await fetch(path).then(r => r.json());
+  lcCache.set(shardIdx, data);
+  if (lcCache.size > LC_CACHE_LIMIT) {
+    const firstKey = lcCache.keys().next().value;
+    lcCache.delete(firstKey);
+  }
+  return data;
+}
+
+async function showSource(idx) {
+  const src = points.find(p => p.idx === idx);
+  if (!src) return;
+  currentSource = src;
+
+  // Info card
+  document.getElementById("info-content").innerHTML = `
+    <div class="info-row"><span class="info-label">Type</span><span class="info-value">${src.var_type}</span></div>
+    <div class="info-row"><span class="info-label">Period</span><span class="info-value">${src.period ? src.period.toFixed(6) + " d" : "—"}</span></div>
+    <div class="info-row"><span class="info-label">RA, Dec</span><span class="info-value">${src.ra ?? "—"}, ${src.dec ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">r mag</span><span class="info-value">${src.rmag ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">BP–RP / abs G</span><span class="info-value">${src.bp_rp ?? "—"} / ${src.abs_g ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">LS sig</span><span class="info-value">${src.ls_sig ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual ?? "—"}</span></div>
+  `;
+
+  updateHRMarker(src);
+
+  const lcDiv = document.getElementById("lc-plot");
+  const note = document.getElementById("lc-note");
+
+  function setStatus(msg) {
+    Plotly.purge(lcDiv);
+    lcDiv.innerHTML = `<div class="placeholder">${msg}</div>`;
+    note.textContent = "";
+  }
+
+  if (!manifest.raw_lightcurves_dir) { setStatus("Raw light curves not exported."); return; }
+  setStatus("Loading…");
+
+  const shardIdx = Math.floor(idx / manifest.raw_shard_size);
+  let shard;
+  try {
+    shard = await loadShard(shardIdx);
+  } catch (e) {
+    console.error("shard fetch failed", shardIdx, e);
+    setStatus(`Light curve fetch failed (shard ${shardIdx})`);
+    return;
+  }
+  const lc = shard[String(idx)];
+  if (!lc) { setStatus(`No LC for idx ${idx} in shard ${shardIdx}`); return; }
+
+  currentLC = lc;
+  renderLC(src, lc);
+}
+
+function renderLC(src, lc) {
+  const lcDiv = document.getElementById("lc-plot");
+  const note = document.getElementById("lc-note");
+
+  const traces = [];
+  const totalEpochs = ["g", "r"].reduce((acc, fl) => acc + (lc[fl] ? lc[fl].t.length : 0), 0);
+  for (const fl of ["g", "r"]) {
+    if (!lc[fl] || lc[fl].t.length === 0) continue;
+    const t = lc[fl].t, f = lc[fl].f, e = lc[fl].e;
+    let x;
+    if (lcView === "raw") {
+      // Subtract per-source minimum so x starts at 0 days
+      const tmin = Math.min(...t);
+      x = t.map(v => v - tmin);
+    } else {
+      // Phase-fold on src.period
+      if (!src.period || src.period <= 0) continue;
+      const tmin = Math.min(...t);
+      x = t.map(v => (((v - tmin) % src.period) + src.period) % src.period / src.period);
+    }
+    traces.push({
+      x: x, y: f,
+      error_y: { type: "data", array: e, visible: true, thickness: 0.5,
+                 width: 0, color: FILTER_COLORS[fl] },
+      mode: "markers", type: "scatter",
+      name: fl,
+      marker: { size: 4, color: FILTER_COLORS[fl], opacity: 0.7 },
+      hovertemplate: `${fl}<br>x=%{x:.4f}<br>flux=%{y:.4f}<extra></extra>`,
+    });
+  }
+  if (traces.length === 0) {
+    setStatus(lcView === "raw" ? "No raw LC data." : "Period unavailable for folding.");
+    return;
+  }
+
+  const isFolded = lcView === "folded";
+  // For folded view, duplicate to two cycles
+  if (isFolded) {
+    for (const tr of [...traces]) {
+      traces.push({
+        ...tr,
+        x: tr.x.map(p => p + 1),
+        showlegend: false,
+      });
+    }
+  }
+  const layout = {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
+    margin: {l: 50, r: 12, t: 4, b: 35},
+    xaxis: {
+      title: isFolded ? "Phase (2 cycles)" : "Time since first epoch (d)",
+      color: "#8b949e", gridcolor: "#21262d",
+      range: isFolded ? [0, 2] : undefined,
+      dtick: isFolded ? 0.5 : undefined,
+    },
+    yaxis: {title: "Fractional flux deviation", color: "#8b949e",
+            gridcolor: "#21262d", autorange: true},
+    legend: {font: {color: "#c9d1d9", size: 10},
+             bgcolor: "rgba(0,0,0,0)", x: 1, xanchor: "right", y: 1},
+    showlegend: true,
+  };
+  Plotly.purge(lcDiv);
+  lcDiv.innerHTML = "";
+  try {
+    Plotly.newPlot(lcDiv, traces, layout, {responsive: true, displayModeBar: false});
+    note.textContent = `${totalEpochs} epochs · ${isFolded ? "folded on " + (src.period ? src.period.toFixed(4) + " d" : "?") : "raw"}`;
+  } catch (e) {
+    console.error("Plotly newPlot failed", e);
+    setStatus("Plot rendering failed (see console)");
+  }
 }
 
 init();

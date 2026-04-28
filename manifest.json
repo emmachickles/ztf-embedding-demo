@@ -1,0 +1,10 @@
+{
+  "n_sources": 25565,
+  "lightcurves_dir": null,
+  "note": "Light curves not exported. Re-run with --use_hdf5_lcs.",
+  "raw_lightcurves_dir": "lightcurves_raw/",
+  "raw_shard_size": 500,
+  "raw_n_shards": 52,
+  "raw_t_ref": 2458000.0,
+  "raw_max_epochs_per_filter": 400
+}
