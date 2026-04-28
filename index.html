@@ -162,7 +162,12 @@
       <div class="legend-note" id="lc-note"></div>
     </div>
     <div class="panel">
-      <div class="panel-title">Gaia HR diagram</div>
+      <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 6px;">
+        <span>Gaia HR diagram</span>
+        <label style="font-size: 11px; color: #8b949e; text-transform: none; letter-spacing: 0;">
+          <input type="checkbox" id="hr-iso"> per-class isolines
+        </label>
+      </div>
       <div id="hr-plot" class="panel-plot"></div>
     </div>
     <div class="panel">
@@ -284,14 +289,19 @@ let highlightKnn = false;
 const lcCache = new Map();
 const LC_CACHE_LIMIT = 6;
 
+let hrClassDensity = null;
+let hrIsolinesOn = false;
+
 async function init() {
-  const [pts, mf, hr, kn, pl] = await Promise.all([
+  const [pts, mf, hr, kn, pl, hrcd] = await Promise.all([
     fetch("points.json").then(r => r.json()),
     fetch("manifest.json").then(r => r.json()),
     fetch("hr_background.json").then(r => r.json()),
     fetch("knn.json").then(r => r.ok ? r.json() : null).catch(() => null),
     fetch("per_layer_umap.json").then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch("hr_class_density.json").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
+  hrClassDensity = hrcd;
   points = pts;
   // Add positional index so per-layer coord lookups are O(1)
   points.forEach((p, i) => { p.posIdx = i; });
@@ -327,6 +337,10 @@ async function init() {
     // Layer-toggle is meaningful only in UMAP view
     if (currentView !== "umap") return;
     animateViewChange();
+  });
+  document.getElementById("hr-iso").addEventListener("change", e => {
+    hrIsolinesOn = e.target.checked;
+    redrawHR();
   });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
     r.addEventListener("change", () => {
@@ -667,19 +681,51 @@ function animateViewChange() {
 }
 
 // ── HR diagram ─────────────────────────────────────────────────────
-function drawHRBackdrop() {
+function drawHRBackdrop() { redrawHR(); }
+
+function redrawHR() {
   const div = document.getElementById("hr-plot");
   const xs = (hrGrid.x_edges.slice(0, -1)).map((e, i) => 0.5 * (e + hrGrid.x_edges[i + 1]));
   const ys = (hrGrid.y_edges.slice(0, -1)).map((e, i) => 0.5 * (e + hrGrid.y_edges[i + 1]));
-  const heatmap = {
-    z: hrGrid.log_density,
-    x: xs, y: ys,
-    type: "heatmap",
+  const traces = [];
+  traces.push({
+    z: hrGrid.log_density, x: xs, y: ys, type: "heatmap",
     colorscale: [[0, "#0d1117"], [0.2, "#1f2630"], [0.5, "#39434f"], [1, "#a0aab5"]],
-    showscale: false,
-    hoverinfo: "skip",
-  };
-  Plotly.react(div, [heatmap, hrMarkerTrace(null, null, null)], hrLayout(), {responsive: true, displayModeBar: false});
+    showscale: false, hoverinfo: "skip",
+  });
+  if (hrIsolinesOn && hrClassDensity) {
+    const xc = hrClassDensity.x_centers, yc = hrClassDensity.y_centers;
+    for (const cls of Object.keys(hrClassDensity.classes)) {
+      const z = hrClassDensity.classes[cls];
+      const color = VAR_TYPE_COLORS[cls] || "#888";
+      // Compute coarse contour levels: [40%, 70%, 90%] of class peak
+      let zmax = 0;
+      for (const row of z) for (const v of row) if (v > zmax) zmax = v;
+      if (zmax <= 0.1) continue;
+      const levels = [0.4 * zmax, 0.7 * zmax, 0.9 * zmax];
+      traces.push({
+        z: z, x: xc, y: yc,
+        type: "contour",
+        contours: {
+          start: levels[0], end: levels[2],
+          size: (levels[2] - levels[0]) / 2,
+          coloring: "lines", showlabels: false,
+        },
+        line: { color: color, width: 1 },
+        showscale: false, hoverinfo: "skip",
+        name: cls, showlegend: false,
+      });
+    }
+  }
+  // Always last: highlight marker trace, preserved across re-renders
+  // Recover existing marker, if any.
+  let bp = null, ag = null, color = null;
+  if (currentSource && Number.isFinite(currentSource.bp_rp) && Number.isFinite(currentSource.abs_g)) {
+    bp = currentSource.bp_rp; ag = currentSource.abs_g;
+    color = VAR_TYPE_COLORS[currentSource.var_type] || "#fff";
+  }
+  traces.push(hrMarkerTrace(bp, ag, color));
+  Plotly.react(div, traces, hrLayout(), {responsive: true, displayModeBar: false});
 }
 
 function hrMarkerTrace(bp_rp, abs_g, color) {
@@ -707,11 +753,13 @@ function hrLayout() {
 
 function updateHRMarker(src) {
   const div = document.getElementById("hr-plot");
+  if (!div.data || !div.data.length) return;
+  const traceIdx = div.data.length - 1;  // marker is always the last trace
   const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
   Plotly.restyle(div, {
     x: [[src.bp_rp]], y: [[src.abs_g]],
     "marker.color": color, "marker.line.color": color,
-  }, [1]);
+  }, [traceIdx]);
 }
 
 // ── Light curve loading (sharded, lazy) ────────────────────────────
