@@ -89,6 +89,11 @@
     line-height: 1.5; }
   .arch-caption code { font-family: "SF Mono", Menlo, monospace;
     background: #0d1117; padding: 1px 5px; border-radius: 3px; color: #c9d1d9; }
+  .knn-chip { font-size: 11px; color: #c9d1d9; cursor: pointer;
+    border: 1px solid var(--chip, #30363d); border-left: 3px solid var(--chip, #30363d);
+    background: #0d1117; border-radius: 3px; padding: 2px 7px;
+    font-family: "SF Mono", Menlo, monospace; }
+  .knn-chip:hover { background: #161b22; }
 </style>
 </head>
 <body>
@@ -472,6 +477,26 @@ function handleSearch() {
     if (!confirm(`Nearest source is ${sep.toFixed(1)}″ away — show it?`)) return;
   }
   showSource(points[best].idx);
+}
+
+function renderKnnList(src) {
+  if (!knn) return "";
+  const ptIdx = points.findIndex(p => p.idx === src.idx);
+  if (ptIdx < 0) return "";
+  const neighborPos = (knn[ptIdx] || []).slice(0, 6);
+  if (neighborPos.length === 0) return "";
+  const chips = neighborPos.map(pos => {
+    const np = points[pos];
+    if (!np) return "";
+    const color = VAR_TYPE_COLORS[np.var_type] || "#888";
+    return `<span class="knn-chip" data-idx="${np.idx}" style="--chip:${color};">${np.var_type}</span>`;
+  }).join("");
+  return `
+    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #30363d;">
+      <div style="font-size: 11px; color: #8b949e; margin-bottom: 4px;">z_sig nearest neighbors</div>
+      <div id="knn-chips" style="display: flex; flex-wrap: wrap; gap: 4px;">${chips}</div>
+    </div>
+  `;
 }
 
 function showLassoSummary(ids) {
@@ -899,9 +924,18 @@ async function showSource(idx) {
     <div class="info-row"><span class="info-label">pm (mas/yr)</span><span class="info-value">${src.pmra != null ? src.pmra.toFixed(2) : "—"}, ${src.pmdec != null ? src.pmdec.toFixed(2) : "—"}</span></div>
     <div class="info-row"><span class="info-label">LS sig</span><span class="info-value">${src.ls_sig ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual ?? "—"}</span></div>
+    ${renderKnnList(src)}
   `;
 
   updateHRMarker(src);
+
+  // Wire kNN chips (rebuilt with each click)
+  document.querySelectorAll("#knn-chips .knn-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const i = parseInt(chip.dataset.idx, 10);
+      if (!Number.isNaN(i)) showSource(i);
+    });
+  });
 
   // Wire pin/unpin buttons (rebuilt with each click since they're inside info card)
   const pinBtn = document.getElementById("pin-btn");
