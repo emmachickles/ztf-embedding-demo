@@ -281,6 +281,8 @@ let perLayerUmap = null;    // {n_layers, names, coords}
 let currentLayer = "default";
 let currentSource = null;
 let currentLC = null;       // last successfully loaded LC dict
+let pinnedSource = null;    // source pinned for side-by-side LC compare
+let pinnedLC = null;
 let currentView = "umap";   // "umap" or "radec"
 let currentColorBy = "var_type";
 let highlightKnn = false;
@@ -807,7 +809,14 @@ async function showSource(idx) {
   }
 
   // Info card
+  const pinTxt = (pinnedSource && pinnedSource.idx === src.idx)
+    ? "📌 Pinned" : "📌 Pin";
   document.getElementById("info-content").innerHTML = `
+    <div class="info-row" style="margin-bottom: 4px;">
+      <button id="pin-btn" style="font-size: 11px; padding: 2px 8px;">${pinTxt}</button>
+      ${pinnedSource ? `<span style="font-size: 11px; color: #8b949e;">vs <strong style="color: ${VAR_TYPE_COLORS[pinnedSource.var_type] || '#fff'}">${pinnedSource.var_type}</strong> #${pinnedSource.idx}</span>` : ""}
+      ${pinnedSource ? `<button id="unpin-btn" style="font-size: 11px; padding: 2px 8px; margin-left: 6px;">Unpin</button>` : ""}
+    </div>
     <div class="info-row"><span class="info-label">Type</span><span class="info-value">${src.var_type}</span></div>
     <div class="info-row"><span class="info-label">Period</span><span class="info-value">${src.period ? src.period.toFixed(6) + " d" : "—"}</span></div>
     <div class="info-row"><span class="info-label">RA, Dec</span><span class="info-value">${src.ra ?? "—"}, ${src.dec ?? "—"}</span></div>
@@ -820,6 +829,27 @@ async function showSource(idx) {
   `;
 
   updateHRMarker(src);
+
+  // Wire pin/unpin buttons (rebuilt with each click since they're inside info card)
+  const pinBtn = document.getElementById("pin-btn");
+  if (pinBtn) {
+    pinBtn.addEventListener("click", () => {
+      if (pinnedSource && pinnedSource.idx === src.idx) {
+        pinnedSource = null; pinnedLC = null;
+      } else {
+        pinnedSource = src; pinnedLC = currentLC;
+      }
+      // Re-render info card to reflect new pin state
+      showSource(currentSource.idx);
+    });
+  }
+  const unpinBtn = document.getElementById("unpin-btn");
+  if (unpinBtn) {
+    unpinBtn.addEventListener("click", () => {
+      pinnedSource = null; pinnedLC = null;
+      showSource(currentSource.idx);
+    });
+  }
 
   const lcDiv = document.getElementById("lc-plot");
   const note = document.getElementById("lc-note");
@@ -1052,13 +1082,9 @@ function renderPeriodogram(src, lc) {
   }
 }
 
-function renderLC(src, lc) {
-  const lcDiv = document.getElementById("lc-plot");
-  const note = document.getElementById("lc-note");
-
+function buildLCTracesForSource(src, lc, alpha, sizeBoost, prefix) {
   const classColor = VAR_TYPE_COLORS[src.var_type] || "#888";
   const traces = [];
-  const totalEpochs = ["g", "r", "i"].reduce((acc, fl) => acc + (lc[fl] ? lc[fl].t.length : 0), 0);
   for (const fl of ["g", "r", "i"]) {
     if (!lc[fl] || lc[fl].t.length === 0) continue;
     const t = lc[fl].t, f = lc[fl].f, e = lc[fl].e;
@@ -1076,19 +1102,39 @@ function renderLC(src, lc) {
     traces.push({
       x: x, y: f,
       error_y: { type: "data", array: e, visible: true, thickness: 0.5,
-                 width: 0, color: color },
+                 width: 0, color: color, opacity: alpha },
       mode: "markers", type: "scatter",
-      name: fl,
-      marker: { size: 5, color: color, opacity: 0.8, symbol: style.symbol },
-      hovertemplate: `${fl}<br>x=%{x:.4f}<br>flux=%{y:.4f}<extra></extra>`,
+      name: prefix ? `${prefix} ${fl}` : fl,
+      marker: { size: 5 + sizeBoost, color: color, opacity: alpha, symbol: style.symbol },
+      hovertemplate: `${prefix || ""}${fl}<br>x=%{x:.4f}<br>flux=%{y:.4f}<extra></extra>`,
     });
   }
+  return traces;
+}
+
+function renderLC(src, lc) {
+  const lcDiv = document.getElementById("lc-plot");
+  const note = document.getElementById("lc-note");
+
+  const isFolded = lcView === "folded";
+
+  // Current source
+  let traces = buildLCTracesForSource(src, lc, 0.85, 0, null);
+
+  // Pinned source overlay (shown dimmer & smaller)
+  if (pinnedSource && pinnedLC && pinnedSource.idx !== src.idx) {
+    const pinTraces = buildLCTracesForSource(
+      pinnedSource, pinnedLC, 0.45, -1, "[pinned]"
+    );
+    traces = [...pinTraces, ...traces];  // pinned underneath
+  }
+
   if (traces.length === 0) {
     setStatus(lcView === "raw" ? "No raw LC data." : "Period unavailable for folding.");
     return;
   }
+  const totalEpochs = ["g", "r", "i"].reduce((acc, fl) => acc + (lc[fl] ? lc[fl].t.length : 0), 0);
 
-  const isFolded = lcView === "folded";
   // For folded view, duplicate to two cycles
   if (isFolded) {
     for (const tr of [...traces]) {
