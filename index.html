@@ -68,6 +68,27 @@
   .modal-close { float: right; cursor: pointer; color: #8b949e; font-size: 20px;
     line-height: 1; padding-left: 16px; }
   .modal-close:hover { color: #c9d1d9; }
+  .arch-diagram { display: flex; flex-direction: column; align-items: center; gap: 6px;
+    margin-top: 8px; }
+  .arch-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px 14px; text-align: center; font-size: 13px; color: #c9d1d9;
+    min-width: 320px; }
+  .arch-sub { color: #8b949e; font-size: 11px; }
+  .arch-arrow { color: #6e7681; font-size: 18px; line-height: 1; }
+  .arch-input { border-color: #58a6ff; }
+  .arch-embed, .arch-trans { border-color: #3aa53a; }
+  .arch-trans { border-width: 2px; }
+  .arch-pool { border-color: #d29922; }
+  .arch-zsig { border-color: #58a6ff; }
+  .arch-zqual { border-color: #f85149; }
+  .arch-split { display: flex; gap: 200px; }
+  .arch-split-arrow { color: #6e7681; font-size: 18px; }
+  .arch-heads { display: flex; gap: 14px; }
+  .arch-heads .arch-box { min-width: 150px; }
+  .arch-caption { font-size: 12px; color: #8b949e; margin-top: 14px;
+    line-height: 1.5; }
+  .arch-caption code { font-family: "SF Mono", Menlo, monospace;
+    background: #0d1117; padding: 1px 5px; border-radius: 3px; color: #c9d1d9; }
 </style>
 </head>
 <body>
@@ -105,6 +126,7 @@
       <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
       <button id="random-btn" title="Show a random source">🎲 Random</button>
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
+      <button id="arch-btn" title="Show the SSL transformer architecture">Model</button>
       <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
       <label style="margin-left: 8px;">
         <input type="checkbox" id="hl-knn" title="When on, clicking a source dims everything else and highlights its 20 nearest neighbors in z_sig space">
@@ -154,6 +176,55 @@
     <span class="modal-close" id="bio-close">&times;</span>
     <h2>Variability classes in this catalog</h2>
     <div class="bio" id="bio-grid"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="arch-modal">
+  <div class="modal" style="max-width: 560px;">
+    <span class="modal-close" id="arch-close">&times;</span>
+    <h2>SSL transformer architecture</h2>
+    <div class="arch-diagram">
+      <div class="arch-box arch-input">
+        Input sequence<br>
+        <span class="arch-sub">(t, flux, flux_err) per epoch · multi-band, MAD-normalized</span>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-box arch-embed">
+        Fourier time-series embedding<br>
+        <span class="arch-sub">flux + Fourier(time) → 256-d</span>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-box arch-trans">
+        Transformer encoder<br>
+        <span class="arch-sub">6 layers · 8 heads · d<sub>ff</sub>=1024 · pre-norm</span>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-box arch-pool">
+        Masked mean pool<br>
+        <span class="arch-sub">→ 256-d per source</span>
+      </div>
+      <div class="arch-split">
+        <div class="arch-split-arrow">↙</div>
+        <div class="arch-split-arrow">↘</div>
+      </div>
+      <div class="arch-heads">
+        <div class="arch-box arch-zsig">
+          <strong>z_sig</strong> (signal)<br>
+          <span class="arch-sub">256→128 · contrastive (InfoNCE)</span>
+        </div>
+        <div class="arch-box arch-zqual">
+          <strong>z_qual</strong> (quality)<br>
+          <span class="arch-sub">256→32→1 · MSE on log(median σ)</span>
+        </div>
+      </div>
+    </div>
+    <p class="arch-caption">
+      Pre-trained self-supervised on raw multi-band ZTF light curves with InfoNCE
+      contrastive loss on <code>z_sig</code> and an auxiliary regression on
+      <code>z_qual</code> to encourage disentanglement.
+      Use the <em>Layer</em> dropdown above to UMAP each encoder layer's
+      pooled output and see when class structure emerges.
+    </p>
   </div>
 </div>
 
@@ -294,9 +365,22 @@ async function init() {
       document.getElementById("bio-modal").classList.remove("open");
     }
   });
+  // Architecture modal
+  document.getElementById("arch-btn").addEventListener("click", () => {
+    document.getElementById("arch-modal").classList.add("open");
+  });
+  document.getElementById("arch-close").addEventListener("click", () => {
+    document.getElementById("arch-modal").classList.remove("open");
+  });
+  document.getElementById("arch-modal").addEventListener("click", e => {
+    if (e.target.id === "arch-modal") {
+      document.getElementById("arch-modal").classList.remove("open");
+    }
+  });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
-      document.getElementById("bio-modal").classList.remove("open");
+      document.querySelectorAll(".modal-backdrop.open")
+        .forEach(m => m.classList.remove("open"));
     }
   });
 
