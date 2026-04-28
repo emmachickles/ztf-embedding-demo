@@ -136,6 +136,10 @@
         <input type="checkbox" id="hl-knn" title="When on, clicking a source dims everything else and highlights its 20 nearest neighbors in z_sig space">
         Highlight kNN
       </label>
+      <label style="margin-left: 4px;">
+        <input type="checkbox" id="lasso-mode" title="Lasso a region of the scatter to see aggregate stats for those sources">
+        Lasso
+      </label>
     </div>
     <div id="scatter"></div>
   </div>
@@ -190,6 +194,14 @@
     <span class="modal-close" id="bio-close">&times;</span>
     <h2>Variability classes in this catalog</h2>
     <div class="bio" id="bio-grid"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="lasso-modal">
+  <div class="modal" style="max-width: 640px;">
+    <span class="modal-close" id="lasso-close">&times;</span>
+    <h2>Lasso selection</h2>
+    <div id="lasso-summary"></div>
   </div>
 </div>
 
@@ -344,6 +356,19 @@ async function init() {
     hrIsolinesOn = e.target.checked;
     redrawHR();
   });
+  document.getElementById("lasso-mode").addEventListener("change", e => {
+    const div = document.getElementById("scatter");
+    Plotly.relayout(div, { dragmode: e.target.checked ? "lasso" : "pan" });
+  });
+
+  document.getElementById("lasso-close").addEventListener("click", () => {
+    document.getElementById("lasso-modal").classList.remove("open");
+  });
+  document.getElementById("lasso-modal").addEventListener("click", e => {
+    if (e.target.id === "lasso-modal") {
+      document.getElementById("lasso-modal").classList.remove("open");
+    }
+  });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
     r.addEventListener("change", () => {
       lcView = document.querySelector('input[name="lc-view"]:checked').value;
@@ -449,6 +474,48 @@ function handleSearch() {
   showSource(points[best].idx);
 }
 
+function showLassoSummary(ids) {
+  const sel = ids.map(i => pointsByIdx.get(i)).filter(Boolean);
+  if (sel.length === 0) return;
+  // Class composition
+  const cls = {};
+  for (const p of sel) cls[p.var_type] = (cls[p.var_type] || 0) + 1;
+  const total = sel.length;
+  const clsHtml = Object.entries(cls)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => {
+      const pct = (100 * v / total).toFixed(1);
+      const color = VAR_TYPE_COLORS[k] || "#888";
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${color}"></span>
+        <span style="font-family:'SF Mono',Menlo,monospace;color:#c9d1d9;min-width:60px">${k}</span>
+        <span style="color:#8b949e">${v.toLocaleString()} (${pct}%)</span>
+      </div>`;
+    }).join("");
+
+  // Period stats
+  const pers = sel.filter(p => p.period > 0).map(p => p.period);
+  const ps = pers.length ? pers.slice().sort((a, b) => a - b) : null;
+  const pmedian = ps ? ps[Math.floor(ps.length / 2)] : null;
+
+  // Mag stats
+  const mags = sel.filter(p => p.rmag != null).map(p => p.rmag);
+  const ms = mags.length ? mags.slice().sort((a, b) => a - b) : null;
+  const mmedian = ms ? ms[Math.floor(ms.length / 2)] : null;
+
+  document.getElementById("lasso-summary").innerHTML = `
+    <p style="font-size:13px;color:#8b949e;margin-bottom:10px;">Selected ${total.toLocaleString()} sources.</p>
+    <h3 style="font-size:13px;color:#58a6ff;margin:12px 0 6px;">Class composition</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;">${clsHtml}</div>
+    <h3 style="font-size:13px;color:#58a6ff;margin:14px 0 6px;">Stats</h3>
+    <div style="font-size:12px;color:#8b949e;line-height:1.6;">
+      ${ps ? `Period: median ${pmedian.toFixed(4)} d · range ${ps[0].toFixed(4)}–${ps[ps.length-1].toFixed(4)} d` : "Period: n/a"}<br>
+      ${ms ? `r mag: median ${mmedian.toFixed(2)} · range ${ms[0].toFixed(2)}–${ms[ms.length-1].toFixed(2)}` : "r mag: n/a"}
+    </div>
+  `;
+  document.getElementById("lasso-modal").classList.add("open");
+}
+
 function populateBioGrid() {
   const grid = document.getElementById("bio-grid");
   const presentTypes = new Set(points.map(p => p.var_type));
@@ -547,6 +614,12 @@ function renderScatter(colorBy) {
   div.on("plotly_click", data => {
     const pt = data.points[0];
     showSource(pt.customdata);
+  });
+  div.removeAllListeners && div.removeAllListeners("plotly_selected");
+  div.on("plotly_selected", data => {
+    if (!data || !data.points || data.points.length === 0) return;
+    const ids = data.points.map(p => p.customdata).filter(v => v != null);
+    showLassoSummary(ids);
   });
 
   // Restore kNN highlight if it was active
