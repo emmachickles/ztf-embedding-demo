@@ -108,6 +108,7 @@
       <select id="view-select">
         <option value="umap">UMAP</option>
         <option value="radec">RA / Dec</option>
+        <option value="galaxy">Galaxy (X–Y)</option>
       </select>
       <label>Layer:</label>
       <select id="layer-select" title="UMAP of each transformer layer's pooled output. Only active in UMAP view.">
@@ -447,6 +448,10 @@ function populateBioGrid() {
 
 function viewXY(p, view) {
   if (view === "radec") return [p.ra, p.dec];
+  if (view === "galaxy") {
+    if (p.gx == null || p.gy == null) return [null, null];
+    return [p.gx, p.gy];
+  }
   // UMAP view: use per-layer coords if a non-default layer is selected
   if (currentLayer !== "default" && perLayerUmap) {
     const layerIdx = perLayerUmap.names.indexOf(currentLayer);
@@ -533,24 +538,38 @@ function renderScatter(colorBy) {
 }
 
 function scatterLayout() {
-  const isRaDec = currentView === "radec";
+  const v = currentView;
+  let xtitle, ytitle, xrange, yrange, xauto = true, yauto = true;
+  if (v === "radec") {
+    xtitle = "RA (deg)"; ytitle = "Dec (deg)";
+    xrange = [0, 360]; yrange = [-30, 90]; xauto = false; yauto = false;
+  } else if (v === "galaxy") {
+    xtitle = "X (kpc, galactocentric)"; ytitle = "Y (kpc, galactocentric)";
+    xrange = [-12, 4]; yrange = [-8, 8]; xauto = false; yauto = false;
+  } else {
+    xtitle = "UMAP 1"; ytitle = "UMAP 2";
+  }
+  // Sun marker for galaxy view via shapes
+  const shapes = [];
+  if (v === "galaxy") {
+    shapes.push({
+      type: "circle", xref: "x", yref: "y",
+      x0: -8.122 - 0.15, x1: -8.122 + 0.15,
+      y0: -0.15, y1: 0.15,
+      line: {color: "#ffd166", width: 1.5},
+      fillcolor: "rgba(255, 209, 102, 0.4)",
+    });
+  }
   return {
     paper_bgcolor: "#0d1117", plot_bgcolor: "#0d1117",
     margin: {l: 50, r: 20, t: 10, b: 40},
-    xaxis: {
-      title: isRaDec ? "RA (deg)" : "UMAP 1",
-      color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
-      range: isRaDec ? [0, 360] : undefined,
-      autorange: isRaDec ? false : true,
-    },
-    yaxis: {
-      title: isRaDec ? "Dec (deg)" : "UMAP 2",
-      color: "#8b949e", gridcolor: "#21262d", zerolinecolor: "#21262d",
-      range: isRaDec ? [-30, 90] : undefined,
-      autorange: isRaDec ? false : true,
-    },
+    xaxis: { title: xtitle, color: "#8b949e", gridcolor: "#21262d",
+             zerolinecolor: "#21262d", range: xrange, autorange: xauto },
+    yaxis: { title: ytitle, color: "#8b949e", gridcolor: "#21262d",
+             zerolinecolor: "#21262d", range: yrange, autorange: yauto },
     legend: {font: {color: "#c9d1d9", size: 10}, bgcolor: "rgba(0,0,0,0)"},
     dragmode: "pan",
+    shapes: shapes,
   };
 }
 
