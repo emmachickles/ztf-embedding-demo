@@ -166,6 +166,11 @@
       <div id="pg-plot" class="panel-plot"></div>
       <div class="legend-note" id="pg-note"></div>
     </div>
+    <div class="panel">
+      <div class="panel-title">Period–luminosity diagram</div>
+      <div id="pl-plot" class="panel-plot"></div>
+      <div class="legend-note" id="pl-note"></div>
+    </div>
   </div>
 </div>
 
@@ -292,6 +297,7 @@ async function init() {
   knn = kn;
   perLayerUmap = pl;
   populateLayerDropdown();
+  drawPLBackdrop();
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
@@ -769,7 +775,87 @@ async function showSource(idx) {
   currentLC = lc;
   renderLC(src, lc);
   renderPeriodogram(src, lc);
+  updatePLMarker(src);
   if (highlightKnn) applyKnnHighlight(idx);
+}
+
+// ── Period–luminosity diagram ─────────────────────────────────────
+function drawPLBackdrop() {
+  const div = document.getElementById("pl-plot");
+
+  // Group points by var_type for legend control. Only sources with both
+  // a valid period and a valid abs_g (parallax SNR > 5 in the export).
+  const groups = {};
+  for (const p of points) {
+    if (!Number.isFinite(p.period) || p.period <= 0) continue;
+    if (!Number.isFinite(p.abs_g)) continue;
+    (groups[p.var_type] ||= []).push(p);
+  }
+  const traces = Object.keys(groups).sort().map(vt => {
+    const subset = groups[vt];
+    return {
+      x: subset.map(p => Math.log10(p.period)),
+      y: subset.map(p => p.abs_g),
+      customdata: subset.map(p => p.idx),
+      mode: "markers", type: "scattergl",
+      name: vt,
+      marker: { size: 3, color: VAR_TYPE_COLORS[vt] || "#888", opacity: 0.55 },
+      hovertemplate: `<b>${vt}</b><br>log P=%{x:.3f}<br>M_G=%{y:.2f}<extra></extra>`,
+      showlegend: false,
+    };
+  });
+  // Reserve a final highlight trace for the clicked source
+  traces.push(plMarkerTrace(null, null, null));
+
+  const layout = {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#0d1117",
+    margin: {l: 50, r: 12, t: 4, b: 35},
+    xaxis: { title: "log₁₀ Period (d)", color: "#8b949e", gridcolor: "#21262d",
+             range: [-1.5, 2.5] },
+    yaxis: { title: "Absolute G", color: "#8b949e", gridcolor: "#21262d",
+             range: [12, -4], autorange: false },
+    showlegend: false,
+  };
+  Plotly.newPlot(div, traces, layout, {responsive: true, displayModeBar: false});
+
+  div.on("plotly_click", data => {
+    const cd = data.points[0].customdata;
+    if (cd != null) showSource(cd);
+  });
+}
+
+function plMarkerTrace(logP, absG, color) {
+  return {
+    x: logP == null ? [] : [logP],
+    y: absG == null ? [] : [absG],
+    mode: "markers", type: "scatter",
+    name: "selected",
+    marker: { size: 14, color: color || "#fff",
+              line: { color: "#fff", width: 2 }, symbol: "x-thin-open" },
+    hovertemplate: `log P=%{x:.3f}<br>M_G=%{y:.2f}<extra></extra>`,
+    showlegend: false,
+  };
+}
+
+function updatePLMarker(src) {
+  const div = document.getElementById("pl-plot");
+  if (!div.data) return;
+  const traceIdx = div.data.length - 1;  // last trace is the highlight
+  if (!Number.isFinite(src.period) || src.period <= 0 || !Number.isFinite(src.abs_g)) {
+    Plotly.restyle(div, { x: [[]], y: [[]] }, [traceIdx]);
+    document.getElementById("pl-note").textContent =
+      "No P–L position (need both period and parallax SNR > 5).";
+    return;
+  }
+  const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
+  Plotly.restyle(div, {
+    x: [[Math.log10(src.period)]],
+    y: [[src.abs_g]],
+    "marker.color": color,
+    "marker.line.color": color,
+  }, [traceIdx]);
+  document.getElementById("pl-note").textContent =
+    `log P = ${Math.log10(src.period).toFixed(3)} · M_G = ${src.abs_g.toFixed(2)}`;
 }
 
 // ── Lomb-Scargle periodogram (computed in-browser) ─────────────────
