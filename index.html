@@ -46,6 +46,28 @@
              background: #0d1117; display: flex; align-items: center;
              justify-content: center; z-index: 100; font-size: 16px; }
   .legend-note { font-size: 11px; color: #484f58; padding: 4px 6px 0; }
+  .controls input[type="text"] { background: #161b22; color: #c9d1d9;
+    border: 1px solid #30363d; border-radius: 4px; padding: 3px 8px;
+    font-size: 12px; width: 130px; font-family: "SF Mono", Menlo, monospace; }
+  .controls button { background: #161b22; color: #c9d1d9;
+    border: 1px solid #30363d; border-radius: 4px; padding: 3px 10px;
+    font-size: 12px; cursor: pointer; }
+  .controls button:hover { border-color: #58a6ff; color: #58a6ff; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; z-index: 200; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    max-width: 720px; width: 92%; max-height: 80vh; overflow-y: auto;
+    padding: 20px 24px; }
+  .modal h2 { font-size: 16px; color: #58a6ff; margin-bottom: 12px; }
+  .modal .bio { display: grid; grid-template-columns: 80px 1fr; gap: 6px 14px;
+    font-size: 13px; line-height: 1.5; }
+  .modal .bio-key { color: #c9d1d9; font-family: "SF Mono", Menlo, monospace;
+    font-weight: 600; }
+  .modal .bio-val { color: #8b949e; }
+  .modal-close { float: right; cursor: pointer; color: #8b949e; font-size: 20px;
+    line-height: 1; padding-left: 16px; }
+  .modal-close:hover { color: #c9d1d9; }
 </style>
 </head>
 <body>
@@ -70,6 +92,11 @@
         <option value="bp_rp">Gaia BP–RP</option>
         <option value="abs_g">Gaia abs G</option>
       </select>
+      <input type="text" id="search-input" placeholder="RA Dec (deg)" title="Type RA Dec in decimal degrees, e.g. 276.85 25.13">
+      <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
+      <button id="random-btn" title="Show a random source">🎲 Random</button>
+      <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
+      <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
     </div>
     <div id="scatter"></div>
   </div>
@@ -104,6 +131,14 @@
 
 <div id="loading">Loading data&hellip;</div>
 
+<div class="modal-backdrop" id="bio-modal">
+  <div class="modal">
+    <span class="modal-close" id="bio-close">&times;</span>
+    <h2>Variability classes in this catalog</h2>
+    <div class="bio" id="bio-grid"></div>
+  </div>
+</div>
+
 <script>
 // ── Color palette for var_types (Plotly D3 qualitative ordering) ──
 const VAR_TYPE_COLORS = {
@@ -118,6 +153,20 @@ const VAR_TYPE_COLORS = {
   CEP:   "#e377c2",
   CEPII: "#f7b6d2",
   Mira:  "#8c564b",
+};
+
+const VAR_TYPE_BIOS = {
+  RR:    "RR Lyrae (RRab) — old, low-mass, helium-burning pulsators in the instability strip; periods 0.4–1 d, sawtooth light curves.",
+  RRc:   "RR Lyrae (RRc) — first-overtone radial pulsators; shorter periods (0.2–0.4 d) and more sinusoidal LCs than RRab.",
+  EW:    "Eclipsing binary, contact (W UMa) — both stars fill their Roche lobes; nearly equal eclipse depths, periods 0.2–1 d.",
+  EA:    "Eclipsing binary, detached (Algol) — well-separated stars; flat between deep, often unequal primary/secondary eclipses.",
+  DSCT:  "δ Scuti — short-period pulsating A/F-type stars on or just off the main sequence; periods ≲ 0.3 d.",
+  RSCVN: "RS CVn — chromospherically active close binaries with tidally synchronized rotation; quasi-periodic spot modulation.",
+  BYDra: "BY Draconis — single late-type spotted dwarfs; rotational modulation by long-lived stellar spots, periods ~ days.",
+  SR:    "Semi-regular variable — late-type giants with imperfectly periodic pulsations; periods 30–1000 d.",
+  CEP:   "Classical Cepheid — young, intermediate-mass yellow supergiants; period–luminosity relation, periods ~ 1–100 d.",
+  CEPII: "Type II Cepheid — older, low-mass population II pulsators; same instability strip, fainter at given period.",
+  Mira:  "Mira variable — AGB stars with very large amplitudes (≳ 2.5 mag in V), periods 100–1000 d, mass-losing.",
 };
 
 let points = null;
@@ -151,6 +200,103 @@ async function init() {
       if (currentLC && currentSource) renderLC(currentSource, currentLC);
     });
   });
+
+  // Search by RA Dec (decimal degrees)
+  document.getElementById("search-btn").addEventListener("click", handleSearch);
+  document.getElementById("search-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") handleSearch();
+  });
+  // Random source
+  document.getElementById("random-btn").addEventListener("click", () => {
+    const i = Math.floor(Math.random() * points.length);
+    showSource(points[i].idx);
+  });
+  // Permalink — copy current source URL
+  document.getElementById("copy-link").addEventListener("click", async () => {
+    if (currentSource == null) {
+      alert("Click a source first, then copy the link.");
+      return;
+    }
+    const url = `${window.location.origin}${window.location.pathname}#${currentSource.idx}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      const btn = document.getElementById("copy-link");
+      const old = btn.textContent;
+      btn.textContent = "✓ Copied";
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+  });
+  // Class biographies modal
+  populateBioGrid();
+  document.getElementById("bio-btn").addEventListener("click", () => {
+    document.getElementById("bio-modal").classList.add("open");
+  });
+  document.getElementById("bio-close").addEventListener("click", () => {
+    document.getElementById("bio-modal").classList.remove("open");
+  });
+  document.getElementById("bio-modal").addEventListener("click", e => {
+    if (e.target.id === "bio-modal") {
+      document.getElementById("bio-modal").classList.remove("open");
+    }
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      document.getElementById("bio-modal").classList.remove("open");
+    }
+  });
+
+  // Hash-based deep link: #<idx> opens that source
+  function openFromHash() {
+    const m = window.location.hash.match(/#(\d+)/);
+    if (m) {
+      const idx = parseInt(m[1], 10);
+      if (idx >= 0 && idx < points.length) showSource(idx);
+    }
+  }
+  window.addEventListener("hashchange", openFromHash);
+  openFromHash();
+}
+
+function handleSearch() {
+  const q = document.getElementById("search-input").value.trim();
+  if (!q) return;
+  const parts = q.split(/[\s,]+/).map(parseFloat).filter(v => Number.isFinite(v));
+  if (parts.length !== 2) {
+    alert("Enter RA and Dec in decimal degrees, e.g. \"276.85 25.13\".");
+    return;
+  }
+  const [ra, dec] = parts;
+  const cosDec = Math.cos(dec * Math.PI / 180);
+  let best = -1, bestD2 = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (p.ra == null || p.dec == null) continue;
+    const dra = (p.ra - ra) * cosDec;
+    const ddec = p.dec - dec;
+    const d2 = dra * dra + ddec * ddec;
+    if (d2 < bestD2) { bestD2 = d2; best = i; }
+  }
+  if (best === -1) { alert("No sources have positions."); return; }
+  const sep = Math.sqrt(bestD2) * 3600;
+  if (sep > 60) {
+    if (!confirm(`Nearest source is ${sep.toFixed(1)}″ away — show it?`)) return;
+  }
+  showSource(points[best].idx);
+}
+
+function populateBioGrid() {
+  const grid = document.getElementById("bio-grid");
+  const presentTypes = new Set(points.map(p => p.var_type));
+  const html = Object.entries(VAR_TYPE_BIOS)
+    .filter(([k]) => presentTypes.has(k))
+    .map(([k, v]) => {
+      const color = VAR_TYPE_COLORS[k] || "#8b949e";
+      return `<div class="bio-key" style="color:${color}">${k}</div>` +
+             `<div class="bio-val">${v}</div>`;
+    }).join("");
+  grid.innerHTML = html;
 }
 
 function renderScatter(colorBy) {
@@ -266,7 +412,24 @@ function updateHRMarker(src) {
 }
 
 // ── Light curve loading (sharded, lazy) ────────────────────────────
-const FILTER_COLORS = { g: "#3aa53a", r: "#d63a3a" };
+// r = the source's class color
+// g = lighter shade of class color, with triangle marker
+// i = darker shade of class color, with square marker
+const FILTER_STYLE = {
+  r: { symbol: "circle",       shade: 0.0  },
+  g: { symbol: "triangle-up",  shade: +0.4 },  // lighter
+  i: { symbol: "square",       shade: -0.3 },  // darker
+};
+function shadeHex(hex, amt) {
+  // amt > 0 → lighter (mix toward white); amt < 0 → darker (mix toward black)
+  const c = parseInt(hex.replace("#", ""), 16);
+  const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  const mix = v => amt >= 0 ? Math.round(v + (255 - v) * amt)
+                            : Math.round(v * (1 + amt));
+  return "#" + [mix(r), mix(g), mix(b)]
+    .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0"))
+    .join("");
+}
 let lcView = "folded";  // toggled by radio buttons
 
 async function loadShard(shardIdx) {
@@ -287,6 +450,10 @@ async function showSource(idx) {
   const src = points.find(p => p.idx === idx);
   if (!src) return;
   currentSource = src;
+  // Update URL hash without triggering hashchange handler
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState(null, "", "#" + idx);
+  }
 
   // Info card
   document.getElementById("info-content").innerHTML = `
@@ -333,29 +500,30 @@ function renderLC(src, lc) {
   const lcDiv = document.getElementById("lc-plot");
   const note = document.getElementById("lc-note");
 
+  const classColor = VAR_TYPE_COLORS[src.var_type] || "#888";
   const traces = [];
-  const totalEpochs = ["g", "r"].reduce((acc, fl) => acc + (lc[fl] ? lc[fl].t.length : 0), 0);
-  for (const fl of ["g", "r"]) {
+  const totalEpochs = ["g", "r", "i"].reduce((acc, fl) => acc + (lc[fl] ? lc[fl].t.length : 0), 0);
+  for (const fl of ["g", "r", "i"]) {
     if (!lc[fl] || lc[fl].t.length === 0) continue;
     const t = lc[fl].t, f = lc[fl].f, e = lc[fl].e;
     let x;
     if (lcView === "raw") {
-      // Subtract per-source minimum so x starts at 0 days
       const tmin = Math.min(...t);
       x = t.map(v => v - tmin);
     } else {
-      // Phase-fold on src.period
       if (!src.period || src.period <= 0) continue;
       const tmin = Math.min(...t);
       x = t.map(v => (((v - tmin) % src.period) + src.period) % src.period / src.period);
     }
+    const style = FILTER_STYLE[fl];
+    const color = shadeHex(classColor, style.shade);
     traces.push({
       x: x, y: f,
       error_y: { type: "data", array: e, visible: true, thickness: 0.5,
-                 width: 0, color: FILTER_COLORS[fl] },
+                 width: 0, color: color },
       mode: "markers", type: "scatter",
       name: fl,
-      marker: { size: 4, color: FILTER_COLORS[fl], opacity: 0.7 },
+      marker: { size: 5, color: color, opacity: 0.8, symbol: style.symbol },
       hovertemplate: `${fl}<br>x=%{x:.4f}<br>flux=%{y:.4f}<extra></extra>`,
     });
   }
