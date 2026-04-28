@@ -131,6 +131,11 @@
       <div class="panel-title">Gaia HR diagram</div>
       <div id="hr-plot" class="panel-plot"></div>
     </div>
+    <div class="panel">
+      <div class="panel-title">Lomb–Scargle periodogram</div>
+      <div id="pg-plot" class="panel-plot"></div>
+      <div class="legend-note" id="pg-note"></div>
+    </div>
   </div>
 </div>
 
@@ -556,6 +561,128 @@ async function showSource(idx) {
 
   currentLC = lc;
   renderLC(src, lc);
+  renderPeriodogram(src, lc);
+}
+
+// ── Lomb-Scargle periodogram (computed in-browser) ─────────────────
+function lombScargle(t, y, periods) {
+  // Mean-subtract y once
+  let ymean = 0;
+  for (const v of y) ymean += v;
+  ymean /= y.length;
+  const yc = new Float64Array(y.length);
+  for (let i = 0; i < y.length; i++) yc[i] = y[i] - ymean;
+  let yvar = 0;
+  for (const v of yc) yvar += v * v;
+  yvar /= y.length;
+  if (yvar === 0) return periods.map(() => 0);
+
+  const power = new Float64Array(periods.length);
+  for (let pi = 0; pi < periods.length; pi++) {
+    const omega = 2 * Math.PI / periods[pi];
+    // Phase offset τ such that Σ sin(2ω(t-τ)) = 0
+    let s2t = 0, c2t = 0;
+    for (let i = 0; i < t.length; i++) {
+      s2t += Math.sin(2 * omega * t[i]);
+      c2t += Math.cos(2 * omega * t[i]);
+    }
+    const tau = 0.5 * Math.atan2(s2t, c2t) / omega;
+
+    let yc_, c, s, csum = 0, ssum = 0, ccsum = 0, sssum = 0;
+    for (let i = 0; i < t.length; i++) {
+      const ang = omega * (t[i] - tau);
+      c = Math.cos(ang); s = Math.sin(ang);
+      yc_ = yc[i];
+      csum += yc_ * c;
+      ssum += yc_ * s;
+      ccsum += c * c;
+      sssum += s * s;
+    }
+    const c_term = ccsum > 0 ? csum * csum / ccsum : 0;
+    const s_term = sssum > 0 ? ssum * ssum / sssum : 0;
+    power[pi] = 0.5 * (c_term + s_term) / yvar;
+  }
+  return power;
+}
+
+function renderPeriodogram(src, lc) {
+  const div = document.getElementById("pg-plot");
+  const note = document.getElementById("pg-note");
+  function setStatus(msg) {
+    Plotly.purge(div);
+    div.innerHTML = `<div class="placeholder">${msg}</div>`;
+    note.textContent = "";
+  }
+
+  // Concatenate t,f from all available filters (relative scaling already
+  // median-subtracted in the export, so we can pool).
+  const t_all = [], y_all = [];
+  for (const fl of ["g", "r", "i"]) {
+    if (!lc[fl]) continue;
+    const tArr = lc[fl].t, fArr = lc[fl].f;
+    for (let i = 0; i < tArr.length; i++) {
+      if (Number.isFinite(tArr[i]) && Number.isFinite(fArr[i])) {
+        t_all.push(tArr[i]);
+        y_all.push(fArr[i]);
+      }
+    }
+  }
+  if (t_all.length < 30) { setStatus("Too few points for periodogram."); return; }
+
+  // Period grid: log-spaced 0.05–50 d, 600 trial periods
+  const nP = 600;
+  const pmin = 0.05, pmax = 50.0;
+  const periods = new Array(nP);
+  const lpmin = Math.log10(pmin), lpmax = Math.log10(pmax);
+  for (let i = 0; i < nP; i++) {
+    periods[i] = Math.pow(10, lpmin + (lpmax - lpmin) * i / (nP - 1));
+  }
+  const power = lombScargle(t_all, y_all, periods);
+
+  const traces = [{
+    x: periods, y: power,
+    mode: "lines", type: "scatter",
+    line: { color: "#8b949e", width: 1 },
+    hovertemplate: "P=%{x:.4f} d<br>power=%{y:.3f}<extra></extra>",
+    showlegend: false,
+  }];
+
+  const shapes = [];
+  if (src.period && src.period > 0) {
+    const color = VAR_TYPE_COLORS[src.var_type] || "#58a6ff";
+    [src.period, src.period * 2, src.period / 2].forEach((p, k) => {
+      shapes.push({
+        type: "line", x0: p, x1: p, y0: 0, y1: 1, yref: "paper",
+        line: { color: color, width: k === 0 ? 1.5 : 1,
+                dash: k === 0 ? "solid" : "dot" },
+      });
+    });
+  }
+
+  const layout = {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
+    margin: {l: 50, r: 12, t: 4, b: 35},
+    xaxis: { title: "Period (d)", type: "log",
+             color: "#8b949e", gridcolor: "#21262d", range: [lpmin, lpmax] },
+    yaxis: { title: "LS power", color: "#8b949e", gridcolor: "#21262d",
+             autorange: true },
+    showlegend: false,
+    shapes: shapes,
+  };
+  Plotly.purge(div);
+  div.innerHTML = "";
+  try {
+    Plotly.newPlot(div, traces, layout, { responsive: true, displayModeBar: false });
+    let pmaxIdx = 0; for (let i = 1; i < power.length; i++) if (power[i] > power[pmaxIdx]) pmaxIdx = i;
+    const pBest = periods[pmaxIdx];
+    const cat = src.period;
+    note.textContent = cat
+      ? `peak ${pBest.toFixed(4)} d — catalog ${cat.toFixed(4)} d (solid: catalog, dotted: 0.5×/2×)`
+      : `peak ${pBest.toFixed(4)} d`;
+  } catch (e) {
+    console.error("periodogram render failed", e);
+    setStatus("Periodogram render failed");
+  }
 }
 
 function renderLC(src, lc) {
