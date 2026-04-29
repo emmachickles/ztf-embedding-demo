@@ -353,9 +353,12 @@ async function init() {
     const newLayer = e.target.value;
     if (newLayer === currentLayer) return;
     currentLayer = newLayer;
-    // Layer-toggle is meaningful only in UMAP view
+    // Layer-toggle is meaningful only in UMAP view. Re-render via the same
+    // path as a color-by change so axes get rebuilt cleanly — Plotly.animate
+    // on scattergl can leave the trace data in an inconsistent state when
+    // the underlying coords (not just an axis swap) change.
     if (currentView !== "umap") return;
-    animateViewChange();
+    renderScatter(currentColorBy);
   });
   document.getElementById("hr-iso").addEventListener("change", e => {
     hrIsolinesOn = e.target.checked;
@@ -1035,13 +1038,19 @@ function drawPLBackdrop() {
 }
 
 function plMarkerTrace(logP, absG, color) {
+  // Class-colored star with a thick white outline for high visibility
+  // against the same-class background points.
   return {
     x: logP == null ? [] : [logP],
     y: absG == null ? [] : [absG],
     mode: "markers", type: "scatter",
     name: "selected",
-    marker: { size: 14, color: color || "#fff",
-              line: { color: "#fff", width: 2 }, symbol: "x-thin-open" },
+    marker: {
+      size: 18,
+      color: color || "#fff",
+      line: { color: "#fff", width: 3 },
+      symbol: "star",
+    },
     hovertemplate: `log P=%{x:.3f}<br>M_G=%{y:.2f}<extra></extra>`,
     showlegend: false,
   };
@@ -1058,11 +1067,11 @@ function updatePLMarker(src) {
     return;
   }
   const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
+  // Fill = class color, outline stays white (don't override line.color)
   Plotly.restyle(div, {
     x: [[Math.log10(src.period)]],
     y: [[src.abs_g]],
     "marker.color": color,
-    "marker.line.color": color,
   }, [traceIdx]);
   document.getElementById("pl-note").textContent =
     `log P = ${Math.log10(src.period).toFixed(3)} · M_G = ${src.abs_g.toFixed(2)}`;
