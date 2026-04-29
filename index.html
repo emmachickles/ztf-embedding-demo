@@ -185,6 +185,7 @@
       <button id="random-btn" title="Show a random source">🎲 Random</button>
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
       <button id="arch-btn" title="Show the SSL transformer architecture">Model</button>
+      <button id="cm-btn" title="Linear-probe confusion matrix — click any cell to see those sources">Confusion</button>
       <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
       <label style="margin-left: 8px;">
         <input type="checkbox" id="hl-knn" title="When on, clicking a source dims everything else and highlights its 20 nearest neighbors in z_sig space">
@@ -249,6 +250,19 @@
     <span class="modal-close" id="bio-close">&times;</span>
     <h2>Variability classes in this catalog</h2>
     <div class="bio" id="bio-grid"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cm-modal">
+  <div class="modal" style="max-width: 720px;">
+    <span class="modal-close" id="cm-close">&times;</span>
+    <h2>Linear-probe confusion matrix</h2>
+    <p style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">
+      Logistic-regression probe on z_sig (5-fold CV). Click any cell to
+      open the sources that fell in (true row × predicted column).
+    </p>
+    <div id="cm-summary" style="font-size: 12px; color: #c9d1d9; margin-bottom: 8px;"></div>
+    <div id="cm-plot" style="width: 100%; height: 460px;"></div>
   </div>
 </div>
 
@@ -360,17 +374,20 @@ const LC_CACHE_LIMIT = 6;
 
 let hrClassDensity = null;
 let hrIsolinesOn = false;
+let probePredictions = null;  // {classes, predictions: [{idx, true, pred_logr, ...}]}
 
 async function init() {
-  const [pts, mf, hr, kn, pl, hrcd] = await Promise.all([
+  const [pts, mf, hr, kn, pl, hrcd, prb] = await Promise.all([
     fetch("points.json").then(r => r.json()),
     fetch("manifest.json").then(r => r.json()),
     fetch("hr_background.json").then(r => r.json()),
     fetch("knn.json").then(r => r.ok ? r.json() : null).catch(() => null),
     fetch("per_layer_umap.json").then(r => r.ok ? r.json() : null).catch(() => null),
     fetch("hr_class_density.json").then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch("probe_predictions.json").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
   hrClassDensity = hrcd;
+  probePredictions = prb;
   points = pts;
   // Add positional index so per-layer coord lookups are O(1)
   points.forEach((p, i) => { p.posIdx = i; });
@@ -426,6 +443,24 @@ async function init() {
   document.getElementById("lasso-modal").addEventListener("click", e => {
     if (e.target.id === "lasso-modal") {
       document.getElementById("lasso-modal").classList.remove("open");
+    }
+  });
+
+  // Confusion matrix modal
+  document.getElementById("cm-btn").addEventListener("click", () => {
+    if (!probePredictions) {
+      alert("probe_predictions.json missing — run scripts/probe_25k.py.");
+      return;
+    }
+    document.getElementById("cm-modal").classList.add("open");
+    drawConfusionMatrix();
+  });
+  document.getElementById("cm-close").addEventListener("click", () => {
+    document.getElementById("cm-modal").classList.remove("open");
+  });
+  document.getElementById("cm-modal").addEventListener("click", e => {
+    if (e.target.id === "cm-modal") {
+      document.getElementById("cm-modal").classList.remove("open");
     }
   });
   document.querySelectorAll('input[name="lc-view"]').forEach(r => {
@@ -629,6 +664,111 @@ function renderKnnList(src) {
       <div id="knn-chips" style="display: flex; flex-wrap: wrap; gap: 4px;">${chips}</div>
     </div>
   `;
+}
+
+function drawConfusionMatrix() {
+  if (!probePredictions) return;
+  const div = document.getElementById("cm-plot");
+  const summary = document.getElementById("cm-summary");
+
+  const classes = probePredictions.classes;
+  const n = classes.length;
+  // Build counts: row = true, col = pred
+  const counts = Array.from({length: n}, () => new Array(n).fill(0));
+  const rowTotals = new Array(n).fill(0);
+  for (const p of probePredictions.predictions) {
+    const ti = classes.indexOf(p.true);
+    const pi = classes.indexOf(p.pred_logr);
+    if (ti < 0 || pi < 0) continue;
+    counts[ti][pi] += 1;
+    rowTotals[ti] += 1;
+  }
+  // Normalize per row to get recall (diagonal = per-class recall)
+  const recall = counts.map((row, i) =>
+    row.map(v => rowTotals[i] > 0 ? v / rowTotals[i] : 0)
+  );
+
+  summary.innerHTML = `
+    <div>Logistic-regression balanced accuracy:
+      <strong>${(probePredictions.logr_balanced_accuracy * 100).toFixed(1)}%</strong>
+      &nbsp;·&nbsp;
+      kNN (k=10, cos): <strong>${(probePredictions.knn_balanced_accuracy * 100).toFixed(1)}%</strong>
+      &nbsp;·&nbsp;
+      ${probePredictions.predictions.length.toLocaleString()} sources, 5-fold CV.
+    </div>
+  `;
+
+  const trace = {
+    z: recall, x: classes, y: classes,
+    type: "heatmap",
+    colorscale: [[0, "#0d1117"], [0.2, "#1f2630"], [0.5, "#39434f"],
+                 [0.7, "#58a6ff"], [1, "#79c0ff"]],
+    colorbar: { title: "recall", thickness: 12,
+                tickfont: {color: "#8b949e"}, titlefont: {color: "#c9d1d9"} },
+    hovertemplate: "true=%{y}<br>pred=%{x}<br>recall=%{z:.3f}<extra></extra>",
+  };
+  const layout = {
+    paper_bgcolor: "#161b22", plot_bgcolor: "#161b22",
+    margin: {l: 70, r: 60, t: 10, b: 70},
+    xaxis: { title: "Predicted class", color: "#8b949e",
+             gridcolor: "#21262d", tickangle: -25 },
+    yaxis: { title: "True class", color: "#8b949e",
+             gridcolor: "#21262d", autorange: "reversed" },
+  };
+  Plotly.newPlot(div, [trace], layout, {responsive: true, displayModeBar: false});
+  div.removeAllListeners && div.removeAllListeners("plotly_click");
+  div.on("plotly_click", data => {
+    const trueClass = data.points[0].y;
+    const predClass = data.points[0].x;
+    showCellSources(trueClass, predClass);
+  });
+}
+
+function showCellSources(trueClass, predClass) {
+  if (!probePredictions) return;
+  // Collect sources where true=trueClass and pred=predClass (positional idx)
+  const matching = [];
+  for (const p of probePredictions.predictions) {
+    if (p.true === trueClass && p.pred_logr === predClass) {
+      matching.push(p.idx);
+    }
+  }
+  if (matching.length === 0) {
+    alert(`No sources with true=${trueClass}, pred=${predClass}.`);
+    return;
+  }
+  // Map positional indices in probe predictions → demo idx (they're equal,
+  // since probe was built on points.json positional order).
+  const ids = matching.map(i => points[i].idx);
+  // Build a lasso-style modal listing them, plus a chip strip to navigate.
+  const summary = document.getElementById("lasso-summary");
+  const isCorrect = trueClass === predClass;
+  const banner = isCorrect
+    ? `<p style="font-size:13px;color:#2ea043;margin-bottom:10px;"><strong>Correct cell:</strong> true ${trueClass}, predicted ${predClass} — ${ids.length.toLocaleString()} sources.</p>`
+    : `<p style="font-size:13px;color:#f85149;margin-bottom:10px;"><strong>Misclassified cell:</strong> true ${trueClass}, predicted ${predClass} — ${ids.length.toLocaleString()} sources.</p>`;
+  // Show first 30 as chips
+  const chipList = ids.slice(0, 30).map(i => {
+    const np = pointsByIdx.get(i);
+    if (!np) return "";
+    const color = VAR_TYPE_COLORS[np.var_type] || "#888";
+    return `<span class="knn-chip" data-idx="${np.idx}" style="--chip:${color};">#${np.idx}</span>`;
+  }).join("");
+  summary.innerHTML = banner + `
+    <div style="font-size:12px;color:#8b949e;margin-bottom:6px;">First 30 examples (click to navigate):</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">${chipList}</div>
+  `;
+  document.getElementById("cm-modal").classList.remove("open");
+  document.getElementById("lasso-modal").classList.add("open");
+  // Wire chip clicks
+  document.querySelectorAll("#lasso-summary .knn-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const i = parseInt(chip.dataset.idx, 10);
+      if (!Number.isNaN(i)) {
+        showSource(i);
+        document.getElementById("lasso-modal").classList.remove("open");
+      }
+    });
+  });
 }
 
 function showLassoSummary(ids) {
