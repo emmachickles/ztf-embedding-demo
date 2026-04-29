@@ -1302,17 +1302,27 @@ function renderPeriodogram(src, lc) {
 function buildLCTracesForSource(src, lc, alpha, sizeBoost, prefix) {
   const classColor = VAR_TYPE_COLORS[src.var_type] || "#888";
   const traces = [];
+
+  // Use a single reference time across ALL filters so phase 0 (and t=0
+  // in raw view) is the same physical epoch in g, r, i. Without this,
+  // each filter folded on its own min(t) and an eclipse would land at
+  // different phases in g vs r.
+  let tref = Infinity;
+  for (const fl of ["g", "r", "i"]) {
+    if (!lc[fl] || !lc[fl].t.length) continue;
+    for (const v of lc[fl].t) if (v < tref) tref = v;
+  }
+  if (!Number.isFinite(tref)) return traces;
+
   for (const fl of ["g", "r", "i"]) {
     if (!lc[fl] || lc[fl].t.length === 0) continue;
     const t = lc[fl].t, f = lc[fl].f, e = lc[fl].e;
     let x;
     if (lcView === "raw") {
-      const tmin = Math.min(...t);
-      x = t.map(v => v - tmin);
+      x = t.map(v => v - tref);
     } else {
       if (!src.period || src.period <= 0) continue;
-      const tmin = Math.min(...t);
-      x = t.map(v => (((v - tmin) % src.period) + src.period) % src.period / src.period);
+      x = t.map(v => (((v - tref) % src.period) + src.period) % src.period / src.period);
     }
     const style = FILTER_STYLE[fl];
     const color = shadeHex(classColor, style.shade);
