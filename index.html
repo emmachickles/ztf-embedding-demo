@@ -115,6 +115,34 @@
     border: 1px dashed #30363d; background: transparent; border-radius: 3px;
     padding: 2px 8px; }
   .restore-chip:hover { color: #c9d1d9; border-color: #58a6ff; }
+
+  /* ─── Wide screens (presentation / 55" Vibe Board) ─────────────────
+     Above ~1600px the right column gains breathing room and lays its
+     panels out as a 2-column grid; above ~2200px it expands to 3-up.
+     Panels switch from flex-fill to fixed-height tiles so they don't
+     stretch into illegible aspect ratios.
+  */
+  @media (min-width: 1600px) {
+    .right { width: 920px; flex-direction: row; flex-wrap: wrap;
+             align-content: flex-start; gap: 12px; }
+    .right > .restore-bar { width: 100%; flex: 0 0 100%; }
+    .right > .info-card  { width: 100%; flex: 0 0 100%; }
+    .right > .panel { flex: 0 0 calc(50% - 6px); height: 360px; }
+    .right > .panel.maximized { width: 100%; flex-basis: 100%;
+                                 height: calc(100vh - 110px); }
+  }
+  @media (min-width: 2200px) {
+    .right { width: 1400px; }
+    .right > .panel { flex: 0 0 calc(33.333% - 8px); height: 420px; }
+    /* Give the LC double-width — time-series legibility is the priority. */
+    .right > .panel[data-name="Light curve"] { flex: 0 0 calc(66.666% - 6px); }
+  }
+  /* On any screen with extra height, let the title text grow */
+  @media (min-height: 1400px) {
+    header h1 { font-size: 26px; }
+    header p  { font-size: 15px; }
+    .panel-title { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
