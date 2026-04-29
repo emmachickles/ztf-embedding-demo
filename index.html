@@ -240,6 +240,10 @@
       <div id="pl-plot" class="panel-plot"></div>
       <div class="legend-note" id="pl-note"></div>
     </div>
+    <div class="panel" data-name="k-NN strip">
+      <div class="panel-title">z_sig nearest neighbors (mini light curves)</div>
+      <div id="knn-strip" class="panel-plot" style="display: flex; gap: 4px; padding: 4px;"></div>
+    </div>
   </div>
 </div>
 
@@ -1258,7 +1262,110 @@ async function showSource(idx) {
   renderLC(src, lc);
   renderPeriodogram(src, lc);
   updatePLMarker(src);
+  renderKnnStrip(src);
   if (highlightKnn) applyKnnHighlight(idx);
+}
+
+// ── k-NN LC strip (5 mini phase-folded LCs of nearest neighbors) ──
+async function renderKnnStrip(src) {
+  const container = document.getElementById("knn-strip");
+  if (!container) return;
+  if (!knn || !manifest.raw_lightcurves_dir) {
+    container.innerHTML = `<div class="placeholder" style="width:100%">k-NN data unavailable.</div>`;
+    return;
+  }
+  const ptIdx = points.findIndex(p => p.idx === src.idx);
+  if (ptIdx < 0) return;
+  const neighbors = (knn[ptIdx] || []).slice(0, 5);
+  if (neighbors.length === 0) {
+    container.innerHTML = `<div class="placeholder" style="width:100%">No neighbors found.</div>`;
+    return;
+  }
+
+  // Pre-build the 5 mini-divs immediately so user sees layout
+  container.innerHTML = "";
+  const mini = neighbors.map(pos => {
+    const np = points[pos];
+    const wrap = document.createElement("div");
+    wrap.style.flex = "1 1 0";
+    wrap.style.minWidth = "0";
+    wrap.style.cursor = "pointer";
+    wrap.style.border = "1px solid #21262d";
+    wrap.style.borderRadius = "4px";
+    wrap.style.padding = "2px";
+    wrap.style.display = "flex";
+    wrap.style.flexDirection = "column";
+    wrap.style.minHeight = "0";
+    wrap.title = `idx ${np.idx} · ${np.var_type} · P=${np.period?.toFixed?.(4) || "?"} d`;
+    wrap.addEventListener("click", () => showSource(np.idx));
+    const label = document.createElement("div");
+    label.style.fontSize = "10px";
+    label.style.color = VAR_TYPE_COLORS[np.var_type] || "#888";
+    label.style.fontFamily = "'SF Mono', Menlo, monospace";
+    label.textContent = `${np.var_type} #${np.idx}`;
+    wrap.appendChild(label);
+    const plotDiv = document.createElement("div");
+    plotDiv.style.flex = "1";
+    plotDiv.style.minHeight = "0";
+    plotDiv.dataset.idx = np.idx;
+    plotDiv.dataset.varType = np.var_type;
+    plotDiv.dataset.period = np.period || "";
+    wrap.appendChild(plotDiv);
+    return { wrap, plotDiv, np };
+  });
+  mini.forEach(m => container.appendChild(m.wrap));
+
+  // Fetch shards needed (lazy — neighbors usually in a few shards)
+  const shardsNeeded = new Set(mini.map(m => Math.floor(m.np.idx / manifest.raw_shard_size)));
+  const shardData = {};
+  for (const s of shardsNeeded) {
+    try { shardData[s] = await loadShard(s); } catch (e) { shardData[s] = null; }
+  }
+
+  // Plot each mini
+  mini.forEach(m => {
+    const np = m.np;
+    const shard = shardData[Math.floor(np.idx / manifest.raw_shard_size)];
+    if (!shard || !shard[String(np.idx)]) {
+      m.plotDiv.innerHTML = `<div class="placeholder" style="font-size:10px">no LC</div>`;
+      return;
+    }
+    const lc = shard[String(np.idx)];
+    // Phase-fold using own period and t0 (or tmin fallback)
+    const period = np.period;
+    if (!period || period <= 0) {
+      m.plotDiv.innerHTML = `<div class="placeholder" style="font-size:10px">no period</div>`;
+      return;
+    }
+    let tmin = Infinity;
+    for (const fl of ["g", "r", "i"]) {
+      if (!lc[fl]) continue;
+      for (const v of lc[fl].t) if (v < tmin) tmin = v;
+    }
+    const tref = Number.isFinite(np.t0) ? np.t0 : tmin;
+
+    const traces = [];
+    const color = VAR_TYPE_COLORS[np.var_type] || "#888";
+    for (const fl of ["r", "g"]) {
+      if (!lc[fl]) continue;
+      const t = lc[fl].t, f = lc[fl].f;
+      const x = t.map(v => (((v - tref) % period) + period) % period / period);
+      traces.push({
+        x, y: f,
+        mode: "markers", type: "scattergl",
+        marker: { size: 2, color: shadeHex(color, fl === "g" ? 0.3 : 0), opacity: 0.7 },
+        showlegend: false,
+        hoverinfo: "skip",
+      });
+    }
+    Plotly.newPlot(m.plotDiv, traces, {
+      paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
+      margin: {l: 4, r: 4, t: 2, b: 4},
+      xaxis: { showgrid: false, zeroline: false, showticklabels: false, range: [0, 1] },
+      yaxis: { showgrid: false, zeroline: false, showticklabels: false, autorange: true },
+      showlegend: false,
+    }, { responsive: true, displayModeBar: false, staticPlot: true });
+  });
 }
 
 // ── Period–luminosity diagram ─────────────────────────────────────
