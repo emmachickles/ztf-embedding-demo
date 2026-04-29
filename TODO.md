@@ -32,6 +32,38 @@
 
 ## Still in the backlog
 
+### Model improvement: the "shape-without-period" problem
+
+**Diagnosis (probe ablation results, 11-class, 5-fold CV).**
+
+| Features | Balanced accuracy |
+|---|---|
+| z_sig only (linear probe) | **0.479** |
+| z_sig (MLP 128-64) | 0.476 |
+| z_sig (RF 200 trees) | 0.433 |
+| z_sig + log(period) (linear) | **0.662**  ← +18 points |
+| z_sig + log(period) + rmag (linear) | 0.671 |
+| z_sig + log(period) (RF) | 0.605 |
+| just log(period) (linear) | 0.429 |
+| Classical RF, 18 GPU-LS features (3-class only) | 0.91 |
+
+**What this says.** The SSL representation captures *shape* well but not *period*. Adding period as a feature jumps performance by ~18 percentage points; non-linear probes (MLP/RF) on z_sig alone don't help. The remaining gap to the classical RF baseline is mostly explained by the classical features carrying both period *and* shape (Fourier R21, φ21, half-period diagnostics).
+
+**Why this happens.** The model takes raw irregular (t, flux, flux_err) sequences. Standard contrastive augmentations (time-shift, sub-sample, noise) preserve period, but the loss has no signal that *forces* the model to encode the absolute period scale. Phase-folded shape is a strong, easy-to-discriminate target for InfoNCE; period structure is subtler and apparently gets thrown away.
+
+**Concrete experiments to try (in priority order):**
+
+1. **Auxiliary period-prediction head.** Add a small MLP head that regresses log₁₀(P) from the pooled backbone output, trained jointly with InfoNCE + the existing z_qual head. Period in the catalog is the supervision signal. Cost: one new head, one new MSE loss term. Expected: linear probe on z_sig should jump significantly.
+2. **Multi-cycle phase-folded inputs.** Train on inputs that show *two or three* phase cycles instead of raw irregular series — the model gets period implicitly through the cycle pattern rather than having to recover it from absolute timestamps. Cost: input pipeline change.
+3. **Class-balanced sampling.** CEPII is ~316 sources vs ~3000 for common classes, giving F1 of 0.006. A weighted sampler would force the model to learn rare classes. Cost: one DataLoader option.
+4. **Larger d_sig** (128 → 256) and more layers (6 → 8). Standard scaling experiment. Risk: overfit on 100K. Worth trying once 1M dataset is ready.
+5. **Stronger augmentations:** drop epochs (probability ~0.3), inject systematic noise mimicking ZTF cadence aliases, jitter timestamps to break clock-aliasing. Make the contrastive task harder so the model is *forced* to learn period structure.
+
+**Confusion-matrix hot spots (for explanatory talking points):**
+- BYDra ↔ RSCVN: heavy mutual confusion. Both are spotted rotational variables with quasi-periodic spot modulation; this is genuine astrophysical similarity, not a model bug.
+- CEPII almost completely misclassified (F1 = 0.006). Smallest training class plus close to classical Cepheids in shape — needs class-balanced training to ever learn it.
+- EW ↔ DSCT: both short-period sinusoidal; classical pipelines distinguish via half-period Fourier amplitude (R21 at P/2). The SSL model isn't getting this distinction without explicit period info.
+
 ### Investigations / known issues
 
 - **Periodogram peak doesn't always land at the catalog period.** The JS Lomb–Scargle on a 600-point log-spaced grid (0.05–50 d) has a frequency resolution near typical RRL periods of ~0.01 cycles/d, but ZTF's ~5-yr baseline can resolve down to ~5e-4. So we're undersampling frequency by ~20×. Diagnosis path:
