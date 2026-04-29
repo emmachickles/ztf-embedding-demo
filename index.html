@@ -37,7 +37,9 @@
   .panel { background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
            padding: 6px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .panel-title { font-size: 11px; color: #8b949e; text-transform: uppercase;
-                 letter-spacing: 0.05em; padding: 4px 6px 0; }
+                 letter-spacing: 0.05em; padding: 4px 6px 0;
+                 display: flex; align-items: center; gap: 8px; }
+  .panel-title > .panel-title-text { flex: 1; }
   .panel-plot { width: 100%; flex: 1; min-height: 0; }
   .placeholder { display: flex; align-items: center; justify-content: center;
                  height: 100%; color: #484f58; font-size: 12px; text-align: center;
@@ -94,6 +96,25 @@
     background: #0d1117; border-radius: 3px; padding: 2px 7px;
     font-family: "SF Mono", Menlo, monospace; }
   .knn-chip:hover { background: #161b22; }
+  .panel-tools { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+  .panel-btn { background: transparent; border: none; color: #6e7681;
+    cursor: pointer; font-size: 13px; padding: 0 4px; line-height: 1; }
+  .panel-btn:hover { color: #c9d1d9; }
+  /* Collapsed: hide plot + note, keep title only */
+  .panel.collapsed { flex: 0 0 auto; }
+  .panel.collapsed .panel-plot,
+  .panel.collapsed .legend-note { display: none; }
+  /* Maximized: this panel takes the full right column; siblings hidden */
+  .right.has-maximized > .panel:not(.maximized),
+  .right.has-maximized > .info-card { display: none; }
+  .right.has-maximized > .panel.maximized { flex: 1; }
+  /* "Restore" toolbar at the top of the right column */
+  .restore-bar { display: none; flex-wrap: wrap; gap: 4px; padding: 4px 0; }
+  .restore-bar.has-hidden { display: flex; }
+  .restore-chip { font-size: 11px; color: #8b949e; cursor: pointer;
+    border: 1px dashed #30363d; background: transparent; border-radius: 3px;
+    padding: 2px 8px; }
+  .restore-chip:hover { color: #c9d1d9; border-color: #58a6ff; }
 </style>
 </head>
 <body>
@@ -149,13 +170,14 @@
     <div id="scatter"></div>
   </div>
   <div class="right">
+    <div class="restore-bar" id="restore-bar"></div>
     <div class="info-card" id="info-card">
       <h3>Source Info</h3>
       <div id="info-content">
         <div class="placeholder" style="height: auto; padding: 8px 0;">Click a point in the scatter plot.</div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" data-name="Light curve">
       <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 6px;">
         <span>Light curve</span>
         <span style="text-transform: none; letter-spacing: 0;">
@@ -170,7 +192,7 @@
       <div id="lc-plot" class="panel-plot"></div>
       <div class="legend-note" id="lc-note"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-name="HR diagram">
       <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 6px;">
         <span>Gaia HR diagram</span>
         <label style="font-size: 11px; color: #8b949e; text-transform: none; letter-spacing: 0;">
@@ -179,12 +201,12 @@
       </div>
       <div id="hr-plot" class="panel-plot"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-name="Periodogram">
       <div class="panel-title">Lomb–Scargle periodogram</div>
       <div id="pg-plot" class="panel-plot"></div>
       <div class="legend-note" id="pg-note"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-name="P–L diagram">
       <div class="panel-title">Period–luminosity diagram</div>
       <div id="pl-plot" class="panel-plot"></div>
       <div class="legend-note" id="pl-note"></div>
@@ -331,6 +353,7 @@ async function init() {
   perLayerUmap = pl;
   populateLayerDropdown();
   drawPLBackdrop();
+  setupPanelControls();
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
@@ -480,6 +503,84 @@ function handleSearch() {
     if (!confirm(`Nearest source is ${sep.toFixed(1)}″ away — show it?`)) return;
   }
   showSource(points[best].idx);
+}
+
+// ── Panel collapse / maximize controls ─────────────────────────────
+function setupPanelControls() {
+  const rightCol = document.querySelector(".right");
+  const restoreBar = document.getElementById("restore-bar");
+
+  function refreshRestoreBar() {
+    const hidden = Array.from(document.querySelectorAll(".panel.collapsed"));
+    restoreBar.innerHTML = "";
+    hidden.forEach(p => {
+      const name = p.dataset.name || "Panel";
+      const chip = document.createElement("button");
+      chip.className = "restore-chip";
+      chip.textContent = "+ " + name;
+      chip.addEventListener("click", () => {
+        p.classList.remove("collapsed");
+        const closeBtn = p.querySelector(".panel-close");
+        if (closeBtn) closeBtn.textContent = "×";
+        refreshRestoreBar();
+        window.dispatchEvent(new Event("resize"));
+      });
+      restoreBar.appendChild(chip);
+    });
+    restoreBar.classList.toggle("has-hidden", hidden.length > 0);
+  }
+
+  document.querySelectorAll(".panel").forEach(panel => {
+    const title = panel.querySelector(".panel-title");
+    if (!title) return;
+    // Wrap existing children into a tools container? No — just append.
+    const tools = document.createElement("span");
+    tools.className = "panel-tools";
+
+    // Maximize button — only on the LC panel for now
+    if (panel.querySelector("#lc-plot")) {
+      const maxBtn = document.createElement("button");
+      maxBtn.className = "panel-btn panel-max";
+      maxBtn.title = "Maximize this panel";
+      maxBtn.textContent = "⛶";
+      maxBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        const isMax = panel.classList.toggle("maximized");
+        rightCol.classList.toggle("has-maximized", isMax);
+        maxBtn.textContent = isMax ? "⤡" : "⛶";
+        maxBtn.title = isMax ? "Restore size" : "Maximize this panel";
+        window.dispatchEvent(new Event("resize"));
+      });
+      tools.appendChild(maxBtn);
+    }
+
+    // Close (collapse) button
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "panel-btn panel-close";
+    closeBtn.title = "Hide panel";
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      panel.classList.toggle("collapsed");
+      const collapsed = panel.classList.contains("collapsed");
+      closeBtn.textContent = collapsed ? "+" : "×";
+      closeBtn.title = collapsed ? "Show panel" : "Hide panel";
+      // Also exit maximize state if collapsing the maximized panel
+      if (collapsed && panel.classList.contains("maximized")) {
+        panel.classList.remove("maximized");
+        rightCol.classList.remove("has-maximized");
+        const m = panel.querySelector(".panel-max");
+        if (m) { m.textContent = "⛶"; m.title = "Maximize this panel"; }
+      }
+      refreshRestoreBar();
+      window.dispatchEvent(new Event("resize"));
+    });
+    tools.appendChild(closeBtn);
+
+    title.appendChild(tools);
+  });
+
+  refreshRestoreBar();
 }
 
 function renderKnnList(src) {
