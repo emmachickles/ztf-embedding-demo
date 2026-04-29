@@ -1228,24 +1228,33 @@ function renderPeriodogram(src, lc) {
     note.textContent = "";
   }
 
-  // Concatenate t,f from all available filters (relative scaling already
-  // median-subtracted in the export, so we can pool).
+  // Single-filter LS on whichever band has the most epochs (typically r,
+  // sometimes g if r is missing). Pooled g+r introduces aliases for some
+  // classes (DSCT especially); diagnostics in the SSL repo show single-band
+  // is more reliable. Verified to match astropy.timeseries.LombScargle.
+  let chosenFilter = null, t_chosen = [], y_chosen = [];
+  for (const fl of ["r", "g", "i"]) {
+    if (!lc[fl] || lc[fl].t.length < 30) continue;
+    if (lc[fl].t.length > t_chosen.length) {
+      chosenFilter = fl; t_chosen = lc[fl].t; y_chosen = lc[fl].f;
+    }
+  }
+  if (chosenFilter === null) { setStatus("Too few points for periodogram."); return; }
+
+  // Filter NaN entries
   const t_all = [], y_all = [];
-  for (const fl of ["g", "r", "i"]) {
-    if (!lc[fl]) continue;
-    const tArr = lc[fl].t, fArr = lc[fl].f;
-    for (let i = 0; i < tArr.length; i++) {
-      if (Number.isFinite(tArr[i]) && Number.isFinite(fArr[i])) {
-        t_all.push(tArr[i]);
-        y_all.push(fArr[i]);
-      }
+  for (let i = 0; i < t_chosen.length; i++) {
+    if (Number.isFinite(t_chosen[i]) && Number.isFinite(y_chosen[i])) {
+      t_all.push(t_chosen[i]); y_all.push(y_chosen[i]);
     }
   }
   if (t_all.length < 30) { setStatus("Too few points for periodogram."); return; }
 
-  // Period grid: log-spaced 0.05–50 d, 600 trial periods
-  const nP = 600;
-  const pmin = 0.05, pmax = 50.0;
+  // Period grid: log-spaced 0.02–500 d, 3000 trial periods.
+  // Wider than before to catch long-period (Mira) and short-period (DSCT,
+  // sub-day EBs) variables. Denser to resolve narrow peaks.
+  const nP = 3000;
+  const pmin = 0.02, pmax = 500.0;
   const periods = new Array(nP);
   const lpmin = Math.log10(pmin), lpmax = Math.log10(pmax);
   for (let i = 0; i < nP; i++) {
@@ -1262,13 +1271,29 @@ function renderPeriodogram(src, lc) {
   }];
 
   const shapes = [];
+  const annotations = [];
   if (src.period && src.period > 0) {
-    const color = VAR_TYPE_COLORS[src.var_type] || "#58a6ff";
-    [src.period, src.period * 2, src.period / 2].forEach((p, k) => {
+    const classColor = VAR_TYPE_COLORS[src.var_type] || "#58a6ff";
+    // Catalog period (solid, prominent), 0.5× and 2× (dotted)
+    [["catalog", src.period, classColor, "solid", 1.8],
+     ["2× cat",  src.period * 2, classColor, "dot", 1],
+     ["½× cat",  src.period / 2, classColor, "dot", 1]].forEach(([label, p, color, dash, w]) => {
+      if (p < pmin || p > pmax) return;
       shapes.push({
         type: "line", x0: p, x1: p, y0: 0, y1: 1, yref: "paper",
-        line: { color: color, width: k === 0 ? 1.5 : 1,
-                dash: k === 0 ? "solid" : "dot" },
+        line: { color, width: w, dash },
+      });
+    });
+    // Daily aliases: f_alias = f_true ± 1.0027 cycles/d
+    const f0 = 1 / src.period;
+    [-1, +1].forEach(s => {
+      const f_a = f0 + s * 1.0027;
+      if (f_a <= 0) return;
+      const p_a = 1 / f_a;
+      if (p_a < pmin || p_a > pmax) return;
+      shapes.push({
+        type: "line", x0: p_a, x1: p_a, y0: 0, y1: 1, yref: "paper",
+        line: { color: "#444", width: 1, dash: "dash" },
       });
     });
   }
@@ -1282,6 +1307,7 @@ function renderPeriodogram(src, lc) {
              autorange: true },
     showlegend: false,
     shapes: shapes,
+    annotations: annotations,
   };
   Plotly.purge(div);
   div.innerHTML = "";
@@ -1290,9 +1316,12 @@ function renderPeriodogram(src, lc) {
     let pmaxIdx = 0; for (let i = 1; i < power.length; i++) if (power[i] > power[pmaxIdx]) pmaxIdx = i;
     const pBest = periods[pmaxIdx];
     const cat = src.period;
-    note.textContent = cat
-      ? `peak ${pBest.toFixed(4)} d — catalog ${cat.toFixed(4)} d (solid: catalog, dotted: 0.5×/2×)`
-      : `peak ${pBest.toFixed(4)} d`;
+    let txt = `peak ${pBest.toFixed(4)} d (${chosenFilter} band, ${t_all.length} pts)`;
+    if (cat) {
+      const ratio = pBest / cat;
+      txt += ` — catalog ${cat.toFixed(4)} d (peak/cat = ${ratio.toFixed(3)})`;
+    }
+    note.textContent = txt;
   } catch (e) {
     console.error("periodogram render failed", e);
     setStatus("Periodogram render failed");
