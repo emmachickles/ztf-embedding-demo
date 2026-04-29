@@ -186,6 +186,8 @@
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
       <button id="arch-btn" title="Show the SSL transformer architecture">Model</button>
       <button id="cm-btn" title="Linear-probe confusion matrix — click any cell to see those sources">Confusion</button>
+      <button id="presets-btn" title="Jump to a canonical example of each variability class — useful for a guided demo">⭐ Examples</button>
+      <button id="help-btn" title="Show keyboard shortcuts and demo help">?</button>
       <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
       <label style="margin-left: 8px;">
         <input type="checkbox" id="hl-knn" title="When on, clicking a source dims everything else and highlights its 20 nearest neighbors in z_sig space">
@@ -254,6 +256,51 @@
     <span class="modal-close" id="bio-close">&times;</span>
     <h2>Variability classes in this catalog</h2>
     <div class="bio" id="bio-grid"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="presets-modal">
+  <div class="modal" style="max-width: 480px;">
+    <span class="modal-close" id="presets-close">&times;</span>
+    <h2>Canonical examples</h2>
+    <p style="font-size: 12px; color: #8b949e; margin-bottom: 12px;">
+      A representative source per variability class. Click to jump.
+    </p>
+    <div id="presets-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="help-modal">
+  <div class="modal" style="max-width: 540px;">
+    <span class="modal-close" id="help-close">&times;</span>
+    <h2>Keyboard shortcuts &amp; tips</h2>
+    <div style="display: grid; grid-template-columns: 100px 1fr; gap: 6px 14px;
+                font-size: 13px; line-height: 1.5;">
+      <div class="bio-key" style="color:#c9d1d9">Space</div>
+      <div class="bio-val">jump to a random source</div>
+      <div class="bio-key" style="color:#c9d1d9">e</div>
+      <div class="bio-val">open the canonical-examples picker</div>
+      <div class="bio-key" style="color:#c9d1d9">v</div>
+      <div class="bio-val">cycle UMAP → RA/Dec → Galaxy view</div>
+      <div class="bio-key" style="color:#c9d1d9">k</div>
+      <div class="bio-val">toggle Highlight kNN</div>
+      <div class="bio-key" style="color:#c9d1d9">i</div>
+      <div class="bio-val">toggle HR per-class isolines</div>
+      <div class="bio-key" style="color:#c9d1d9">m</div>
+      <div class="bio-val">open the architecture diagram</div>
+      <div class="bio-key" style="color:#c9d1d9">c</div>
+      <div class="bio-val">open the confusion matrix</div>
+      <div class="bio-key" style="color:#c9d1d9">b</div>
+      <div class="bio-val">open the class-info modal</div>
+      <div class="bio-key" style="color:#c9d1d9">Esc</div>
+      <div class="bio-val">close any open modal</div>
+    </div>
+    <p style="font-size: 12px; color: #8b949e; margin-top: 14px;">
+      Click a point in the UMAP scatter to inspect it. The right column
+      panels each have a × button to collapse and a ⛶ button (LC only)
+      to maximize. URL hash <code>#&lt;idx&gt;</code> deep-links to a
+      specific source.
+    </p>
   </div>
 </div>
 
@@ -447,6 +494,85 @@ async function init() {
   document.getElementById("lasso-modal").addEventListener("click", e => {
     if (e.target.id === "lasso-modal") {
       document.getElementById("lasso-modal").classList.remove("open");
+    }
+  });
+
+  // Presets modal
+  const PRESETS = {
+    "RRc": 4430, "EA": 7010, "RR": 4730, "EW": 5071, "DSCT": 24973,
+    "BYDra": 12549, "SR": 7639, "CEPII": 4238, "RSCVN": 6752,
+    "CEP": 13776, "Mira": 23353,
+  };
+  const presetsGrid = document.getElementById("presets-grid");
+  Object.entries(PRESETS).forEach(([cls, idx]) => {
+    const btn = document.createElement("button");
+    btn.className = "panel-btn";
+    btn.style.cssText = `padding: 6px 8px; text-align: left;
+      border: 1px solid var(--c, #30363d); border-left: 3px solid var(--c, #30363d);
+      background: #0d1117; color: #c9d1d9; cursor: pointer; font-size: 12px;`;
+    btn.style.setProperty("--c", VAR_TYPE_COLORS[cls] || "#888");
+    btn.textContent = `${cls} #${idx}`;
+    btn.title = VAR_TYPE_BIOS[cls] || "";
+    btn.addEventListener("click", () => {
+      showSource(idx);
+      document.getElementById("presets-modal").classList.remove("open");
+    });
+    presetsGrid.appendChild(btn);
+  });
+  document.getElementById("presets-btn").addEventListener("click", () => {
+    document.getElementById("presets-modal").classList.add("open");
+  });
+  document.getElementById("presets-close").addEventListener("click", () => {
+    document.getElementById("presets-modal").classList.remove("open");
+  });
+  document.getElementById("presets-modal").addEventListener("click", e => {
+    if (e.target.id === "presets-modal") {
+      document.getElementById("presets-modal").classList.remove("open");
+    }
+  });
+
+  // Help modal
+  document.getElementById("help-btn").addEventListener("click", () => {
+    document.getElementById("help-modal").classList.add("open");
+  });
+  document.getElementById("help-close").addEventListener("click", () => {
+    document.getElementById("help-modal").classList.remove("open");
+  });
+  document.getElementById("help-modal").addEventListener("click", e => {
+    if (e.target.id === "help-modal") {
+      document.getElementById("help-modal").classList.remove("open");
+    }
+  });
+
+  // Keyboard shortcuts (only when not typing in an input)
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === " ") {  // random
+      e.preventDefault();
+      const i = Math.floor(Math.random() * points.length);
+      showSource(points[i].idx);
+    } else if (k === "e") {
+      document.getElementById("presets-modal").classList.add("open");
+    } else if (k === "v") {
+      const sel = document.getElementById("view-select");
+      const opts = Array.from(sel.options).map(o => o.value);
+      const cur = opts.indexOf(sel.value);
+      sel.value = opts[(cur + 1) % opts.length];
+      sel.dispatchEvent(new Event("change"));
+    } else if (k === "k") {
+      const cb = document.getElementById("hl-knn"); cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event("change"));
+    } else if (k === "i") {
+      const cb = document.getElementById("hr-iso"); cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event("change"));
+    } else if (k === "m") {
+      document.getElementById("arch-modal").classList.add("open");
+    } else if (k === "c") {
+      document.getElementById("cm-btn").click();
+    } else if (k === "b") {
+      document.getElementById("bio-modal").classList.add("open");
     }
   });
 
