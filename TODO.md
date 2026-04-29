@@ -32,6 +32,36 @@
 
 ## Still in the backlog
 
+### Investigations / known issues
+
+- **Periodogram peak doesn't always land at the catalog period.** The JS Lomb–Scargle on a 600-point log-spaced grid (0.05–50 d) has a frequency resolution near typical RRL periods of ~0.01 cycles/d, but ZTF's ~5-yr baseline can resolve down to ~5e-4. So we're undersampling frequency by ~20×. Diagnosis path:
+  - Pick a specific source where the demo periodogram misses the catalog peak. Run the *same* light curve through (a) `astropy.timeseries.LombScargle` (b) astrotools' periodogram.py (c) `wd-periodicity` to check whether a peak exists in those tools at the catalog period.
+  - If yes: my JS implementation has a bug, or the period grid is too coarse. Fix is either (i) refine to ~6000 periods (10× cost, still <1 s in JS), or (ii) two-pass: coarse grid first, then a fine grid in a window around each top-N peak; or (iii) seed a fine grid around the catalog period (cheap; loses generality).
+  - If no: maybe pooled g+r flux is being treated wrong (e.g., median-subtracted-fractional in different units across filters). Try LS on the dominant filter only, or with proper noise weighting.
+  - Reference implementations to compare:
+    - `~/libraries/astrotools/astrotools/periodogram.py` (canonical).
+    - `~/projects/wd-periodicity/scripts/debug/s3_diag_one_atlas_lc.py` (Lomb–Scargle helper, has been used on noisy ATLAS data).
+- **Eclipse phase 0 alignment.** Currently `t_ref = min(t)` across filters → phase 0 = earliest observation, not eclipse minimum. We *do* have Chen+2020 `T0` in `chen2020.hdf5`; thread it through `points.json` and use `((t − T0) mod P) / P` so eclipses (and pulsation maxima for RR Lyrae) land at phase 0 by definition.
+
+### Linear-probe / classification example browser
+
+**Goal.** Tightly couple the demo to model-evaluation results. From a confusion matrix or a period-recovery scatter, click an interesting cell (false positive, false negative, or unrecovered period) and the demo opens that example so the user can interactively diagnose what went wrong.
+
+**Data we'd need.**
+- For the **classification probe** (FNN or LogReg on `z_sig` predicting var_type): per-source predicted class + softmax/probability + true class. Save a `probe_predictions.json` keyed by demo idx.
+- For **period recovery** (e.g., the LS catalog vs Chen+2020 ground truth, or any model-derived period): per-source recovered period, ratio to truth, "recovered" flag. Save a `period_recovery.json` keyed by demo idx.
+
+**UI.**
+- New modal or panel: confusion-matrix heatmap. Each cell is clickable; clicking populates the lasso-style summary panel with the sources in that cell (true class i, predicted class j) and a chip list to navigate to specific examples.
+- Same pattern for period recovery: scatter of `log P_recovered / P_true`. Click any source — fly to it in the embedding, show its LC + periodogram.
+- A "Filter to FN/FP" toggle in the source-info card so the user can see the model's mistakes color-coded directly on the UMAP.
+
+**Effort.** Modest — once the predictions JSON exists, the UI is two new modals + one new color-by axis. The hard part is generating the predictions cleanly: needs a stable train/test split documented alongside the export.
+
+**Pragmatic order.** Build the predictions export first (in `ztf-ssl-transformer/scripts/`), commit them next to the embeddings, then layer the UI. Pairs especially nicely with TODO #3 (per-layer reps) — show the confusion matrix at each layer to see *where* the model starts getting class right.
+
+### Other backlog
+
 - **Proper-motion arrows** in RA/Dec view (sub-feature of TODO #2). Have pmra/pmdec; just needs JS quiver-style annotation overlay limited to the visible / selected subset.
 - **Aladin Lite full-screen sky context** (TODO #2 Stage B). Bigger lift than Stage A — separate panel-swap, no morph.
 - **Per-class Gaia DR3 vari_\*** (TODO #5). STILTS cross-match against `I/358/vrrlyrae` and `I/358/vcepheid` for class-specific physics. Would add color-by axes for [Fe/H] (RR), pulsation mode, etc. Limited to RR/RRc/CEP/CEPII subsets.
