@@ -106,20 +106,28 @@ front-end."
 
 - **"How does z_sig compare to classical hand-crafted features?"**
   Honestly, the SSL representation is currently *behind* the classical
-  baseline. A Random Forest on 18 GPU-derived Lomb–Scargle and Fourier
-  features hits ~91% balanced accuracy on the 3-class RR/EB/DSCT
-  problem. A logistic-regression probe on z_sig is at ~63% on the same
-  3-class problem (~48% balanced accuracy on the harder 11-class
-  problem). The SSL model recovers real astrophysics — the HR
-  diagram, P–L relations, the halo/disk split in galactic
-  coordinates — but it isn't yet a better classifier than hand
-  features. Closing that gap is the central research goal.
+  baseline. On the 11-class subset (5-fold CV, balanced accuracy):
 
-  The case for continuing on SSL despite this: hand features *can't*
-  generalize to subtypes the labels weren't designed for, can't find
-  novelty, and lock you into one survey's cadence. SSL solves all
-  three at the cost of accuracy in the closed-set classification
-  setting.
+  | Features | Probe | Bal. acc. |
+  |---|---|---|
+  | z_sig only | linear | 48% |
+  | z_sig + log(P) + rmag | linear | 67% |
+  | 9 classical features (period, mags, amps, R21, ϕ21, Ng, Nr) | RF | **87%** |
+  | z_sig + classical | RF | 76% |
+
+  Adding z_sig to the classical features does *not* help RF. The
+  current SSL model is essentially re-deriving information already in
+  Chen+2020's summary statistics. That's a failure of training setup,
+  not of the SSL approach in principle: we phase-fold inputs on the
+  catalog period, so the model sees one cycle and captures *shape* but
+  not period or aperiodic features.
+
+  The case for continuing on SSL despite this is precisely *what
+  classical features can't do*: discover novelty, encode aperiodic
+  signatures, handle blends, and transfer across surveys. The next
+  experiment removes the phase-fold crutch — the model trains on raw,
+  unfolded sequences and has to recover period structure on its own.
+  That's where SSL stops being redundant with classical features.
 
 - **"What about non-periodic transients?"**
   Out of scope for this Chen+2020 slice. The natural extension: train on

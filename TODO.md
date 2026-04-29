@@ -59,6 +59,21 @@
 4. **Larger d_sig** (128 → 256) and more layers (6 → 8). Standard scaling experiment. Risk: overfit on 100K. Worth trying once 1M dataset is ready.
 5. **Stronger augmentations:** drop epochs (probability ~0.3), inject systematic noise mimicking ZTF cadence aliases, jitter timestamps to break clock-aliasing. Make the contrastive task harder so the model is *forced* to learn period structure.
 
+**Stacked-feature upper bound (also 11-class, 5-fold CV).**
+
+| Features | Model | Balanced acc |
+|---|---|---|
+| z_sig only | linear | 0.479 |
+| z_sig + log P + rmag | linear | 0.671 |
+| Classical 9-feat (period, mags, amps, R21, ϕ21, Ng, Nr) | linear | 0.760 |
+| Classical 9-feat | Random Forest | **0.867** |
+| z_sig + Classical 9-feat | linear | 0.777 |
+| z_sig + Classical 9-feat | Random Forest | 0.760 |
+
+**The painful read.** The current z_sig adds essentially nothing on top of the Chen+2020 catalog summary statistics — Linear(z_sig + classical) = 0.777 vs. Linear(classical alone) = 0.760, a 1.7-point improvement that disappears under RF. So the SSL representation is not doing better than the classical R21/ϕ21/period stats it implicitly already saw via phase-folding.
+
+**Implication for the research direction.** SSL only earns its keep if it learns something the catalog summaries don't capture: anomaly signatures, multi-cycle structure, blends, ephemeris drift, etc. Those signals live in the *un-folded* light curve. **Removing the catalog-period assumption from training is now the highest-priority experiment, not just a stretch goal** — without it, the SSL is solving a problem the classical pipeline already solved.
+
 **Confusion-matrix hot spots (for explanatory talking points):**
 - BYDra ↔ RSCVN: heavy mutual confusion. Both are spotted rotational variables with quasi-periodic spot modulation; this is genuine astrophysical similarity, not a model bug.
 - CEPII almost completely misclassified (F1 = 0.006). Smallest training class plus close to classical Cepheids in shape — needs class-balanced training to ever learn it.
