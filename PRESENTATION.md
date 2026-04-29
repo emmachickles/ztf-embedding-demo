@@ -11,15 +11,15 @@ The demo: <https://emmachickles.github.io/ztf-embedding-demo/>
 
 ## 30-second lightning pitch
 
-> *"This is a self-supervised transformer trained on a million ZTF light
+> *"This is a self-supervised transformer trained on 100,000 ZTF light
 > curves — no class labels, just raw photometry. Each point is a
 > periodic variable star. The clusters you see are what the model
 > *thinks* are the same kind of object. We give it nothing about
 > period, color, or distance, and yet the embedding cleanly separates
 > RR Lyrae from eclipsing binaries, finds the instability strip on the
-> HR diagram, and traces the Galactic halo. We're building this as a
-> foundation model for time-domain astronomy that scales to LSST's
-> tens of billions of sources."*
+> HR diagram, and traces the Galactic halo. The next training run scales
+> to a million sources and ultimately to all 2 billion in ZTF, en route
+> to a foundation model for LSST."*
 
 (One sentence + one click. Show the UMAP colored by variability type, click
 an RR Lyrae, then point to the HR diagram lighting up at M_G ≈ 0.5.)
@@ -105,12 +105,21 @@ front-end."
   already there; the constraint is data preparation.
 
 - **"How does z_sig compare to classical hand-crafted features?"**
-  We have a Random Forest baseline with 18 GPU-derived Lomb–Scargle and
-  Fourier features that hits ~91% balanced accuracy on the 3-class
-  RR/EB/DSCT problem. Linear probe on z_sig is in the same ballpark —
-  the SSL representation isn't *beating* hand features yet. The case
-  for SSL is generalization: subtype substructure, anomaly detection,
-  and (eventually) transfer to surveys with different cadences.
+  Honestly, the SSL representation is currently *behind* the classical
+  baseline. A Random Forest on 18 GPU-derived Lomb–Scargle and Fourier
+  features hits ~91% balanced accuracy on the 3-class RR/EB/DSCT
+  problem. A logistic-regression probe on z_sig is at ~63% on the same
+  3-class problem (~48% balanced accuracy on the harder 11-class
+  problem). The SSL model recovers real astrophysics — the HR
+  diagram, P–L relations, the halo/disk split in galactic
+  coordinates — but it isn't yet a better classifier than hand
+  features. Closing that gap is the central research goal.
+
+  The case for continuing on SSL despite this: hand features *can't*
+  generalize to subtypes the labels weren't designed for, can't find
+  novelty, and lock you into one survey's cadence. SSL solves all
+  three at the cost of accuracy in the closed-set classification
+  setting.
 
 - **"What about non-periodic transients?"**
   Out of scope for this Chen+2020 slice. The natural extension: train on
