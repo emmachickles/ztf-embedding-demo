@@ -573,6 +573,8 @@ async function init() {
       document.getElementById("cm-btn").click();
     } else if (k === "b") {
       document.getElementById("bio-modal").classList.add("open");
+    } else if (k === "?" || k === "/") {
+      document.getElementById("help-modal").classList.add("open");
     }
   });
 
