@@ -203,7 +203,7 @@
       <div class="panel-title"><span>SSL transformer</span></div>
       <div id="arch-mini" class="panel-plot" style="overflow: auto;"></div>
     </div>
-    <div class="panel meter-panel" data-name="Probe accuracy">
+    <div class="panel meter-panel collapsed" data-name="Probe accuracy">
       <div class="panel-title"><span>Probe accuracy of selected layer</span></div>
       <div id="probe-meter" class="panel-plot" style="display: flex; flex-direction: column; padding: 12px;">
         <div id="probe-meter-bignum" style="font-size: 38px; font-weight: 600;
@@ -879,11 +879,12 @@ function setupPanelControls() {
       tools.appendChild(maxBtn);
     }
 
-    // Close (collapse) button
+    // Close (collapse) button — initial label depends on current state
     const closeBtn = document.createElement("button");
     closeBtn.className = "panel-btn panel-close";
-    closeBtn.title = "Hide panel";
-    closeBtn.textContent = "×";
+    const initiallyCollapsed = panel.classList.contains("collapsed");
+    closeBtn.title = initiallyCollapsed ? "Show panel" : "Hide panel";
+    closeBtn.textContent = initiallyCollapsed ? "+" : "×";
     closeBtn.addEventListener("click", e => {
       e.stopPropagation();
       panel.classList.toggle("collapsed");
@@ -952,8 +953,8 @@ function drawArchMini() {
       <div class="arch-mini-heads">
         <div class="arch-mini-box arch-mini-zsig" data-layer="z_sig (final)">
           <strong>z_sig</strong><br><span class="arch-mini-sub">128-d · InfoNCE</span></div>
-        <div class="arch-mini-box arch-mini-zqual">
-          <strong>z_qual</strong><br><span class="arch-mini-sub">scalar · MSE(σ)</span></div>
+        <div class="arch-mini-box arch-mini-zqual" data-layer="z_qual">
+          <strong>z_qual</strong><br><span class="arch-mini-sub">32-d · MSE(σ)</span></div>
       </div>
     </div>
   `;
@@ -973,17 +974,17 @@ function drawArchMini() {
 function refreshArchMiniHighlight() {
   const stack = document.getElementById("arch-mini-stack");
   if (!stack) return;
-  // Clear all highlights
   document.querySelectorAll(".arch-mini-box").forEach(b => {
     b.classList.remove("arch-mini-active");
   });
-  // Highlight the active layer / z_sig
   let target = null;
   if (currentLayer && currentLayer.startsWith("Layer ")) {
     const n = currentLayer.split(" ")[1];
     target = stack.querySelector(`.arch-mini-box[data-layer="${n}"]`);
   } else if (currentLayer === "z_sig (final)" || currentLayer === "default") {
     target = document.querySelector(`.arch-mini-box[data-layer="z_sig (final)"]`);
+  } else if (currentLayer === "z_qual") {
+    target = document.querySelector(`.arch-mini-box[data-layer="z_qual"]`);
   }
   if (target) target.classList.add("arch-mini-active");
 }
@@ -1012,23 +1013,33 @@ function updateProbeMeter(layer) {
   big.style.color = "#58a6ff";
   sub.textContent = `${layer} · ${perLayerProbe.n_classes}-class CV · ${perLayerProbe.n_sources.toLocaleString()} sources`;
   fill.style.width = (acc * 100).toFixed(1) + "%";
-  // Tiny context line: how this compares to the "best" layer and z_sig
   if (ctx) {
-    // Find best layer (excluding default duplicate)
-    let bestI = 0, bestV = 0;
-    perLayerProbe.balanced_accuracy.forEach((v, j) => {
-      if (perLayerProbe.names[j] === "default") return;
-      if (v > bestV) { bestV = v; bestI = j; }
-    });
-    const zSigI = perLayerProbe.names.indexOf("z_sig (final)");
-    const zSigAcc = zSigI >= 0 ? perLayerProbe.balanced_accuracy[zSigI] : null;
-    let lines = [];
-    if (i !== bestI) lines.push(`Best: <strong>${perLayerProbe.names[bestI]}</strong> at ${(bestV * 100).toFixed(1)}%`);
-    if (zSigAcc != null && layer !== "z_sig (final)" && layer !== "default") {
-      const delta = (acc - zSigAcc) * 100;
-      lines.push(`Δ vs z_sig: <strong style="color:${delta >= 0 ? '#2ea043' : '#f85149'}">${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pp</strong>`);
+    // z_qual: low accuracy is by design (disentanglement check), not a regression
+    if (layer === "z_qual") {
+      const chance = 1 / (perLayerProbe.n_classes || 11);
+      ctx.innerHTML =
+        `<em>Disentanglement check.</em><br>` +
+        `Chance for ${perLayerProbe.n_classes}-class is ${(chance * 100).toFixed(1)}%; ` +
+        `z_qual sits just above it because it was trained to predict noise, not class. ` +
+        `That's the goal — z_qual carries the photometric quality signal that z_sig is supposed to be free of.`;
+    } else {
+      // Find best layer (excluding default duplicate and z_qual)
+      let bestI = 0, bestV = 0;
+      perLayerProbe.balanced_accuracy.forEach((v, j) => {
+        if (perLayerProbe.names[j] === "default") return;
+        if (perLayerProbe.names[j] === "z_qual") return;
+        if (v > bestV) { bestV = v; bestI = j; }
+      });
+      const zSigI = perLayerProbe.names.indexOf("z_sig (final)");
+      const zSigAcc = zSigI >= 0 ? perLayerProbe.balanced_accuracy[zSigI] : null;
+      let lines = [];
+      if (i !== bestI) lines.push(`Best: <strong>${perLayerProbe.names[bestI]}</strong> at ${(bestV * 100).toFixed(1)}%`);
+      if (zSigAcc != null && layer !== "z_sig (final)" && layer !== "default") {
+        const delta = (acc - zSigAcc) * 100;
+        lines.push(`Δ vs z_sig: <strong style="color:${delta >= 0 ? '#2ea043' : '#f85149'}">${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pp</strong>`);
+      }
+      ctx.innerHTML = lines.join("<br>");
     }
-    ctx.innerHTML = lines.join("<br>");
   }
 }
 
