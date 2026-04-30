@@ -2080,31 +2080,11 @@ function renderPeriodogram(src, lc) {
     note.textContent = "";
   }
 
-  // Single-filter LS on whichever band has the most epochs (typically r,
-  // sometimes g if r is missing). Pooled g+r introduces aliases for some
-  // classes (DSCT especially); diagnostics in the SSL repo show single-band
-  // is more reliable. Verified to match astropy.timeseries.LombScargle.
-  let chosenFilter = null, t_chosen = [], y_chosen = [];
-  for (const fl of ["r", "g", "i"]) {
-    if (!lc[fl] || lc[fl].t.length < 30) continue;
-    if (lc[fl].t.length > t_chosen.length) {
-      chosenFilter = fl; t_chosen = lc[fl].t; y_chosen = lc[fl].f;
-    }
-  }
-  if (chosenFilter === null) { setStatus("Too few points for periodogram."); return; }
-
-  // Filter NaN entries
-  const t_all = [], y_all = [];
-  for (let i = 0; i < t_chosen.length; i++) {
-    if (Number.isFinite(t_chosen[i]) && Number.isFinite(y_chosen[i])) {
-      t_all.push(t_chosen[i]); y_all.push(y_chosen[i]);
-    }
-  }
-  if (t_all.length < 30) { setStatus("Too few points for periodogram."); return; }
-
   // Period grid: log-spaced 0.02–500 d, 3000 trial periods.
-  // Wider than before to catch long-period (Mira) and short-period (DSCT,
-  // sub-day EBs) variables. Denser to resolve narrow peaks.
+  // Verified to match astropy.timeseries.LombScargle peak position
+  // exactly; the algorithm is correct, the residual problem is genuine
+  // ZTF-cadence aliasing (catalog period sometimes has lower LS power
+  // than a daily alias).
   const nP = 3000;
   const pmin = 0.02, pmax = 500.0;
   const periods = new Array(nP);
@@ -2112,31 +2092,80 @@ function renderPeriodogram(src, lc) {
   for (let i = 0; i < nP; i++) {
     periods[i] = Math.pow(10, lpmin + (lpmax - lpmin) * i / (nP - 1));
   }
-  const power = lombScargle(t_all, y_all, periods);
 
-  const traces = [{
-    x: periods, y: power,
-    mode: "lines", type: "scatter",
-    line: { color: "#8b949e", width: 1 },
-    hovertemplate: "P=%{x:.4f} d<br>power=%{y:.3f}<extra></extra>",
-    showlegend: false,
-  }];
+  // Compute LS for each available filter PLUS the pooled g+r series.
+  // Showing all three lets the audience see whether they agree, and
+  // whether the catalog period sits at a peak in *any* of them — when
+  // single-band LS misses due to aliasing, sometimes pooling helps.
+  function pickGood(fl) {
+    if (!lc[fl] || !lc[fl].t || lc[fl].t.length < 30) return null;
+    const t = [], y = [];
+    for (let i = 0; i < lc[fl].t.length; i++) {
+      if (Number.isFinite(lc[fl].t[i]) && Number.isFinite(lc[fl].f[i])) {
+        t.push(lc[fl].t[i]); y.push(lc[fl].f[i]);
+      }
+    }
+    return t.length >= 30 ? { t, y } : null;
+  }
+
+  const seriesG = pickGood("g");
+  const seriesR = pickGood("r");
+  // Pooled g+r — combine in time order; flux is already median-subtracted
+  // per filter so the offsets cancel.
+  let seriesPool = null;
+  if (seriesG && seriesR) {
+    const t = seriesG.t.concat(seriesR.t);
+    const y = seriesG.y.concat(seriesR.y);
+    seriesPool = { t, y };
+  } else if (seriesG || seriesR) {
+    seriesPool = seriesG || seriesR;
+  }
+  if (!seriesPool) { setStatus("Too few points for periodogram."); return; }
+
+  // Hand the pooled series for the headline peak (most epochs available)
+  // but draw separate lines for g, r, and pool so the disagreement is
+  // visible.
+  const traces = [];
+  const styled = [];
+  if (seriesG) {
+    styled.push({ name: "g", series: seriesG, color: "#3aa53a", dash: "solid", width: 1 });
+  }
+  if (seriesR) {
+    styled.push({ name: "r", series: seriesR, color: "#d63a3a", dash: "solid", width: 1 });
+  }
+  if (seriesG && seriesR) {
+    styled.push({ name: "g + r", series: seriesPool, color: "#8b949e", dash: "dot", width: 1.5 });
+  }
+  let pBest = null, pBestPower = -Infinity, peakName = null;
+  for (const s of styled) {
+    const power = lombScargle(s.series.t, s.series.y, periods);
+    let mxI = 0;
+    for (let i = 1; i < power.length; i++) if (power[i] > power[mxI]) mxI = i;
+    if (power[mxI] > pBestPower) { pBest = periods[mxI]; pBestPower = power[mxI]; peakName = s.name; }
+    traces.push({
+      x: periods, y: power,
+      mode: "lines", type: "scatter",
+      name: s.name,
+      line: { color: s.color, width: s.width, dash: s.dash },
+      hovertemplate: `${s.name}<br>P=%{x:.4f} d<br>power=%{y:.3f}<extra></extra>`,
+      showlegend: true,
+    });
+  }
 
   const shapes = [];
-  const annotations = [];
   if (src.period && src.period > 0) {
     const classColor = VAR_TYPE_COLORS[src.var_type] || "#58a6ff";
-    // Catalog period (solid, prominent), 0.5× and 2× (dotted)
-    [["catalog", src.period, classColor, "solid", 1.8],
-     ["2× cat",  src.period * 2, classColor, "dot", 1],
-     ["½× cat",  src.period / 2, classColor, "dot", 1]].forEach(([label, p, color, dash, w]) => {
+    // Catalog period — bold solid; 0.5× / 2× — dotted
+    [[src.period, classColor, "solid", 2.5],
+     [src.period * 2, classColor, "dot", 1],
+     [src.period / 2, classColor, "dot", 1]].forEach(([p, color, dash, w]) => {
       if (p < pmin || p > pmax) return;
       shapes.push({
         type: "line", x0: p, x1: p, y0: 0, y1: 1, yref: "paper",
         line: { color, width: w, dash },
       });
     });
-    // Daily aliases: f_alias = f_true ± 1.0027 cycles/d
+    // Daily aliases: f_alias = f_true ± 1.0027 cycles/d (sidereal-day cadence)
     const f0 = 1 / src.period;
     [-1, +1].forEach(s => {
       const f_a = f0 + s * 1.0027;
@@ -2157,21 +2186,28 @@ function renderPeriodogram(src, lc) {
              color: "#8b949e", gridcolor: "#21262d", range: [lpmin, lpmax] },
     yaxis: { title: "LS power", color: "#8b949e", gridcolor: "#21262d",
              autorange: true },
-    showlegend: false,
+    showlegend: true,
+    legend: { x: 1, xanchor: "right", y: 1, yanchor: "top",
+              bgcolor: "rgba(0,0,0,0.4)",
+              font: { color: "#c9d1d9", size: 10 } },
     shapes: shapes,
-    annotations: annotations,
   };
   Plotly.purge(div);
   div.innerHTML = "";
   try {
     Plotly.newPlot(div, traces, layout, { responsive: true, displayModeBar: false });
-    let pmaxIdx = 0; for (let i = 1; i < power.length; i++) if (power[i] > power[pmaxIdx]) pmaxIdx = i;
-    const pBest = periods[pmaxIdx];
     const cat = src.period;
-    let txt = `peak ${pBest.toFixed(4)} d (${chosenFilter} band, ${t_all.length} pts)`;
-    if (cat) {
+    let txt;
+    if (cat && pBest != null) {
       const ratio = pBest / cat;
-      txt += ` — catalog ${cat.toFixed(4)} d (peak/cat = ${ratio.toFixed(3)})`;
+      const aliasLabel =
+        Math.abs(ratio - 1) < 0.05 ? " (= catalog)" :
+        Math.abs(ratio - 0.5) < 0.05 ? " (½× catalog — half-period alias, common in EBs)" :
+        Math.abs(ratio - 2) < 0.05 ? " (2× catalog — half-period alias)" :
+        "";
+      txt = `peak ${pBest.toFixed(4)} d in ${peakName}${aliasLabel} · catalog ${cat.toFixed(4)} d`;
+    } else {
+      txt = `peak ${(pBest||0).toFixed(4)} d in ${peakName}`;
     }
     note.textContent = txt;
   } catch (e) {
