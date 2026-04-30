@@ -21,17 +21,22 @@
   .container { display: flex; height: calc(100vh - 70px); }
   .left-panels { width: 0; overflow: hidden; padding: 0;
                  display: flex; flex-direction: column; gap: 10px;
-                 border-right: 1px solid #21262d; min-height: 0; }
+                 border-right: 1px solid #21262d; min-height: 0;
+                 transition: width 0.25s ease; }
   .left { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; }
   .right { width: 440px; border-left: 1px solid #21262d; padding: 12px;
            display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-  /* Show left-side panels above 1400px viewport width */
+  /* Auto-show left-side panels above 1400 px viewport width. */
   @media (min-width: 1400px) {
     .left-panels { width: 380px; padding: 12px; }
   }
   @media (min-width: 2200px) {
     .left-panels { width: 460px; }
   }
+  /* Manual override classes — set on <body> via the "Panels" toggle so
+     users on narrower screens can still pop the left dashboard open. */
+  body.force-left-panels .left-panels { width: 380px; padding: 12px; }
+  body.hide-left-panels .left-panels  { width: 0;     padding: 0;     border-right: none; }
   .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
   .controls label { font-size: 12px; color: #8b949e; }
   .controls select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
@@ -262,6 +267,7 @@
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
       <button id="arch-btn" title="Show the SSL transformer architecture">Model</button>
       <button id="cm-btn" title="Linear-probe confusion matrix — click any cell to see those sources">Confusion</button>
+      <button id="left-panels-btn" title="Show or hide the left-side dashboard panels (auto-shown ≥ 1400 px viewport)">⊞ Panels</button>
       <button id="presets-btn" title="Jump to a canonical example of each variability class — useful for a guided demo">⭐ Examples</button>
       <button id="help-btn" title="Show keyboard shortcuts and demo help">?</button>
       <button id="copy-link" title="Copy a shareable link to the current source">🔗 Link</button>
@@ -617,6 +623,42 @@ async function init() {
     if (e.target.id === "presets-modal") {
       document.getElementById("presets-modal").classList.remove("open");
     }
+  });
+
+  // Left-panels toggle (overrides the media query). State persists in
+  // localStorage so it survives reload.
+  const LP_KEY = "ztf-demo-left-panels";
+  function applyLeftPanelState(state) {
+    document.body.classList.remove("force-left-panels", "hide-left-panels");
+    if (state === "force") document.body.classList.add("force-left-panels");
+    else if (state === "hide") document.body.classList.add("hide-left-panels");
+    // 'auto' = no class, fall back to media query
+    window.dispatchEvent(new Event("resize"));  // let Plotly resize panels
+  }
+  // Apply saved state on load
+  try {
+    const saved = localStorage.getItem(LP_KEY);
+    if (saved === "force" || saved === "hide") applyLeftPanelState(saved);
+  } catch (e) {}
+  document.getElementById("left-panels-btn").addEventListener("click", () => {
+    // Toggle: viewport-wide (auto-show) → cycle force / hide.
+    const wide = window.innerWidth >= 1400;
+    let cur = "auto";
+    if (document.body.classList.contains("force-left-panels")) cur = "force";
+    else if (document.body.classList.contains("hide-left-panels")) cur = "hide";
+    let next;
+    if (wide) {
+      // Wide screen — auto = visible. Cycle: auto → hide → auto.
+      next = cur === "hide" ? "auto" : "hide";
+    } else {
+      // Narrow screen — auto = hidden. Cycle: auto → force → auto.
+      next = cur === "force" ? "auto" : "force";
+    }
+    applyLeftPanelState(next);
+    try {
+      if (next === "auto") localStorage.removeItem(LP_KEY);
+      else localStorage.setItem(LP_KEY, next);
+    } catch (e) {}
   });
 
   // Help modal
