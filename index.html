@@ -2089,17 +2089,20 @@ function drawPLBackdrop() {
 }
 
 function plMarkerTrace(logP, absG, color) {
-  // Class-colored star with a thick white outline for high visibility
-  // against the same-class background points.
+  // Class-colored star with a thick white outline for high visibility.
+  // type: "scattergl" (not regular scatter) — the PL background traces
+  // are scattergl, and Plotly's WebGL canvas always paints OVER the SVG
+  // layer, so an SVG marker would render underneath the background.
+  // Sharing the existing plot's WebGL context is free (no new context).
   return {
     x: logP == null ? [] : [logP],
     y: absG == null ? [] : [absG],
-    mode: "markers", type: "scatter",
+    mode: "markers", type: "scattergl",
     name: "selected",
     marker: {
-      size: 18,
-      color: color || "#fff",
-      line: { color: "#fff", width: 3 },
+      size: 20,
+      color: color || "#ffffff",
+      line: { color: "#ffffff", width: 3 },
       symbol: "star",
     },
     hovertemplate: `log P=%{x:.3f}<br>M_G=%{y:.2f}<extra></extra>`,
