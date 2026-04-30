@@ -1346,6 +1346,10 @@ function renderScatter(colorBy) {
     }];
   }
 
+  // Always-on selected-source marker as the LAST trace (so updateScatterMarker
+  // can find it at div.data.length-1 and Plotly.restyle in place).
+  traces.push(scatterMarkerTrace(currentSource));
+
   Plotly.react(div, traces, scatterLayout(), {responsive: true});
 
   div.removeAllListeners && div.removeAllListeners("plotly_click");
@@ -1465,6 +1469,10 @@ function buildKnnTraces(srcIdx) {
   return traces;
 }
 
+function _isOverlayTrace(t) {
+  return t && (t.name === KNN_TRACE_TAG || t.name === SCATTER_MARKER_TAG);
+}
+
 function applyKnnHighlight(srcIdx) {
   const div = document.getElementById("scatter");
   if (!div || !div.data || !div.data.length) return;
@@ -1477,16 +1485,15 @@ function applyKnnHighlight(srcIdx) {
   }
   if (!traces || !traces.length) return;
   try {
-    // Restyle main traces to dim, but skip any existing kNN-highlight traces.
+    // Dim only the underlying scatter traces — leave the persistent
+    // selected-source X marker AND any prior kNN traces alone.
     const mainIdx = [];
-    (div.data || []).forEach((t, i) => { if (t.name !== KNN_TRACE_TAG) mainIdx.push(i); });
-    // Use the safer 3-arg form: scalar broadcast to a specific list of traces.
+    (div.data || []).forEach((t, i) => { if (!_isOverlayTrace(t)) mainIdx.push(i); });
     Plotly.restyle(div, "marker.opacity", 0.08, mainIdx);
     removeKnnTraceInPlace();
     Plotly.addTraces(div, traces);
   } catch (e) {
     console.error("applyKnnHighlight failed", e);
-    // Try to recover by restoring opacity
     try { Plotly.restyle(div, "marker.opacity", 0.55); } catch (_) {}
   }
 }
@@ -1496,7 +1503,11 @@ function clearKnnHighlight() {
   if (!div || !div.data) return;
   try {
     removeKnnTraceInPlace();
-    Plotly.restyle(div, "marker.opacity", 0.55);
+    // Restore opacity on the main scatter traces only (preserve the
+    // selected-source marker's full opacity).
+    const mainIdx = [];
+    (div.data || []).forEach((t, i) => { if (!_isOverlayTrace(t)) mainIdx.push(i); });
+    Plotly.restyle(div, "marker.opacity", 0.55, mainIdx);
   } catch (e) {
     console.error("clearKnnHighlight failed", e);
   }
@@ -1507,6 +1518,61 @@ function removeKnnTraceInPlace() {
   const indices = [];
   (div.data || []).forEach((t, i) => { if (t.name === KNN_TRACE_TAG) indices.push(i); });
   if (indices.length) Plotly.deleteTraces(div, indices);
+}
+
+// ── Persistent UMAP marker for the currently-selected source ─────
+// Always-on (independent of the Highlight kNN toggle) so users can
+// glance at the UMAP and see "where we are" after picking a point or
+// jumping via the Examples picker.
+const SCATTER_MARKER_TAG = "__scatter_selected__";
+
+function scatterMarkerTrace(src) {
+  if (!src) return scatterMarkerEmpty();
+  const [x, y] = viewXY(src, currentView);
+  if (x == null || y == null) return scatterMarkerEmpty();
+  const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
+  return {
+    x: [x], y: [y],
+    customdata: [src.idx],
+    mode: "markers", type: "scatter",
+    name: SCATTER_MARKER_TAG,
+    marker: { size: 18, color: color, symbol: "x",
+              line: { color: "#fff", width: 2.5 } },
+    hovertemplate: `selected · ${src.var_type} #${src.idx}<extra></extra>`,
+    showlegend: false,
+  };
+}
+function scatterMarkerEmpty() {
+  return {
+    x: [], y: [], customdata: [],
+    mode: "markers", type: "scatter",
+    name: SCATTER_MARKER_TAG,
+    marker: { size: 18, color: "#fff", symbol: "x",
+              line: { color: "#fff", width: 2.5 } },
+    hoverinfo: "skip", showlegend: false,
+  };
+}
+
+function updateScatterMarker(src) {
+  const div = document.getElementById("scatter");
+  if (!div || !div.data || !div.data.length) return;
+  const idx = div.data.findIndex(t => t.name === SCATTER_MARKER_TAG);
+  if (idx < 0) return;  // marker not yet present; renderScatter will add it
+  if (!src) {
+    Plotly.restyle(div, { x: [[]], y: [[]] }, [idx]);
+    return;
+  }
+  const [x, y] = viewXY(src, currentView);
+  if (x == null || y == null) {
+    Plotly.restyle(div, { x: [[]], y: [[]] }, [idx]);
+    return;
+  }
+  const color = VAR_TYPE_COLORS[src.var_type] || "#fff";
+  Plotly.restyle(div, {
+    x: [[x]], y: [[y]],
+    customdata: [[src.idx]],
+    "marker.color": color,
+  }, [idx]);
 }
 
 // Smooth Plotly.animate from current view to currentView. Reuses existing
@@ -1685,6 +1751,7 @@ async function showSource(idx) {
   `;
 
   updateHRMarker(src);
+  updateScatterMarker(src);
 
   // Wire kNN chips (rebuilt with each click)
   document.querySelectorAll("#knn-chips .knn-chip").forEach(chip => {
