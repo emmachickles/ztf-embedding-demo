@@ -982,10 +982,15 @@ function drawArchMini() {
     </div>
   `;
   refreshArchMiniHighlight();
-  // Click any layer box to set the Layer dropdown
+  // Click any layer box to set the Layer dropdown.
+  // Note: encoder-layer boxes use bare numerics (data-layer="1") so the
+  // refreshArchMiniHighlight selector can find them via the trailing
+  // digit of "Layer 1", but the dropdown values are "Layer 1" (with
+  // prefix). Map back here.
   div.querySelectorAll(".arch-mini-box[data-layer]").forEach(b => {
     b.addEventListener("click", () => {
-      const target = b.dataset.layer;
+      const raw = b.dataset.layer;
+      const target = /^\d+$/.test(raw) ? `Layer ${raw}` : raw;
       const sel = document.getElementById("layer-select");
       const opt = Array.from(sel.options).find(o => o.value === target);
       if (opt) { sel.value = target; sel.dispatchEvent(new Event("change")); }
