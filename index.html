@@ -1108,14 +1108,16 @@ function drawFourierFreqs() {
       hovertemplate: "P=%{x:.4f} d<extra>learned</extra>",
     },
   ];
-  // Annotate the bands typical for each variability class
+  // Annotate the bands typical for each variability class. Place labels
+  // INSIDE the plot near the top so they don't crash into the panel
+  // title above.
   const shapes = [];
   const annotations = [];
   const bands = [
     [0.05, 0.15, "DSCT"],
-    [0.2, 1.0, "RR / EW"],
-    [1.0, 10, "EA / Cep"],
-    [50, 500, "Mira / SR"],
+    [0.2, 1.0, "RR/EW"],
+    [1.0, 10, "EA/Cep"],
+    [50, 500, "Mira/SR"],
   ];
   for (const [lo, hi, label] of bands) {
     shapes.push({
@@ -1124,18 +1126,19 @@ function drawFourierFreqs() {
       fillcolor: "rgba(88,166,255,0.05)", line: { width: 0 },
     });
     annotations.push({
-      xref: "x", yref: "paper", x: Math.sqrt(lo * hi), y: 1.05,
+      xref: "x", yref: "paper", x: Math.sqrt(lo * hi), y: 0.95,
+      yanchor: "top",
       text: label, showarrow: false,
-      font: { size: 10, color: "#8b949e" },
+      font: { size: 9, color: "#8b949e" },
     });
   }
   Plotly.newPlot(div, traces, {
     paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
-    margin: { l: 10, r: 10, t: 22, b: 35 },
+    margin: { l: 10, r: 10, t: 12, b: 35 },
     xaxis: { title: "Period encoded (d)", type: "log",
              color: "#8b949e", gridcolor: "#21262d",
              range: [Math.log10(0.0009), Math.log10(1500)] },
-    yaxis: { showticklabels: false, range: [-0.5, 1.5],
+    yaxis: { showticklabels: false, range: [-0.5, 1.8],
              tickvals: [0, 1], ticktext: ["learned", "initial"],
              showgrid: false, zeroline: false, color: "#8b949e" },
     showlegend: false,
