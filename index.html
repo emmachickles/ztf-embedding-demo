@@ -1297,8 +1297,12 @@ function renderScatter(colorBy) {
 
   div.removeAllListeners && div.removeAllListeners("plotly_click");
   div.on("plotly_click", data => {
-    const pt = data.points[0];
-    showSource(pt.customdata);
+    try {
+      const pt = data.points[0];
+      if (pt && pt.customdata != null) showSource(pt.customdata);
+    } catch (e) {
+      console.error("plotly_click handler crashed", e);
+    }
   });
   div.removeAllListeners && div.removeAllListeners("plotly_selected");
   div.on("plotly_selected", data => {
@@ -1353,56 +1357,95 @@ function scatterLayout() {
 // its customdata gets re-mapped through pointsByIdx in animateViewChange.
 const KNN_TRACE_TAG = "__knn_highlight__";
 
-function buildKnnTrace(srcIdx) {
+// Two traces: one for the source (white star), one for the neighbors
+// (colored circles). Two traces avoid per-marker symbol/size arrays which
+// have been flaky on scattergl across Plotly versions.
+function buildKnnTraces(srcIdx) {
   if (!knn) return null;
   const ptIdx = points.findIndex(p => p.idx === srcIdx);
   if (ptIdx < 0) return null;
+  const src = pointsByIdx.get(srcIdx);
+  if (!src) return null;
+
   const neighborPos = knn[ptIdx] || [];
-  const includeIdxs = [srcIdx, ...neighborPos.map(i => points[i].idx)];
-  const xs = [], ys = [], colors = [];
-  for (let i = 0; i < includeIdxs.length; i++) {
-    const p = pointsByIdx.get(includeIdxs[i]);
+  const nbrXs = [], nbrYs = [], nbrColors = [], nbrIds = [];
+  for (const pos of neighborPos) {
+    const p = points[pos];
     if (!p) continue;
     const [x, y] = viewXY(p, currentView);
-    xs.push(x); ys.push(y);
-    colors.push(i === 0 ? "#ffffff" : (VAR_TYPE_COLORS[p.var_type] || "#58a6ff"));
+    if (x == null || y == null) continue;
+    nbrXs.push(x); nbrYs.push(y);
+    nbrColors.push(VAR_TYPE_COLORS[p.var_type] || "#58a6ff");
+    nbrIds.push(p.idx);
   }
-  return {
-    x: xs, y: ys,
-    customdata: includeIdxs,
-    mode: "markers", type: "scattergl",
-    name: KNN_TRACE_TAG,
-    marker: {
-      size: xs.map((_, i) => i === 0 ? 14 : 7),
-      color: colors,
-      line: { color: "#fff", width: 1 },
-      symbol: xs.map((_, i) => i === 0 ? "star" : "circle"),
-      opacity: 1.0,
-    },
-    hovertemplate: "%{customdata}<extra></extra>",
-    showlegend: false,
-  };
+
+  const [sx, sy] = viewXY(src, currentView);
+  const traces = [];
+  // Neighbors trace
+  if (nbrXs.length) {
+    traces.push({
+      x: nbrXs, y: nbrYs,
+      customdata: nbrIds,
+      mode: "markers", type: "scattergl",
+      name: KNN_TRACE_TAG,
+      marker: { size: 7, color: nbrColors,
+                line: { color: "#fff", width: 1 } },
+      hovertemplate: "neighbor #%{customdata}<extra></extra>",
+      showlegend: false,
+    });
+  }
+  // Selected-source trace (white star). scatter (SVG) is fine here — only
+  // one point, performance not a concern, and 'star' symbol renders cleanly.
+  if (sx != null && sy != null) {
+    traces.push({
+      x: [sx], y: [sy],
+      customdata: [src.idx],
+      mode: "markers", type: "scatter",
+      name: KNN_TRACE_TAG,
+      marker: { size: 18, color: "#ffffff", symbol: "star",
+                line: { color: "#0d1117", width: 2 } },
+      hovertemplate: "selected #%{customdata}<extra></extra>",
+      showlegend: false,
+    });
+  }
+  return traces;
 }
 
 function applyKnnHighlight(srcIdx) {
   const div = document.getElementById("scatter");
-  if (!div.data) return;
-  const tr = buildKnnTrace(srcIdx);
-  if (!tr) return;
-  // Dim every existing trace's marker.opacity to 0.08
-  const dimUpdate = { "marker.opacity": (div.data || []).map(() => 0.08) };
-  Plotly.restyle(div, dimUpdate);
-  // Remove any prior highlight trace, then add this one
-  removeKnnTraceInPlace();
-  Plotly.addTraces(div, tr);
+  if (!div || !div.data || !div.data.length) return;
+  let traces;
+  try {
+    traces = buildKnnTraces(srcIdx);
+  } catch (e) {
+    console.error("buildKnnTraces failed", e);
+    return;
+  }
+  if (!traces || !traces.length) return;
+  try {
+    // Restyle main traces to dim, but skip any existing kNN-highlight traces.
+    const mainIdx = [];
+    (div.data || []).forEach((t, i) => { if (t.name !== KNN_TRACE_TAG) mainIdx.push(i); });
+    // Use the safer 3-arg form: scalar broadcast to a specific list of traces.
+    Plotly.restyle(div, "marker.opacity", 0.08, mainIdx);
+    removeKnnTraceInPlace();
+    Plotly.addTraces(div, traces);
+  } catch (e) {
+    console.error("applyKnnHighlight failed", e);
+    // Try to recover by restoring opacity
+    try { Plotly.restyle(div, "marker.opacity", 0.55); } catch (_) {}
+  }
 }
 
 function clearKnnHighlight() {
   const div = document.getElementById("scatter");
-  if (!div.data) return;
-  removeKnnTraceInPlace();
-  // Restore main-trace opacity
-  Plotly.restyle(div, { "marker.opacity": (div.data || []).map(() => 0.55) });
+  if (!div || !div.data) return;
+  try {
+    removeKnnTraceInPlace();
+    Plotly.restyle(div, "marker.opacity", 0.55);
+  } catch (e) {
+    console.error("clearKnnHighlight failed", e);
+  }
 }
 
 function removeKnnTraceInPlace() {
