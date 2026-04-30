@@ -19,9 +19,19 @@
                       padding: 6px 10px; white-space: nowrap; flex-shrink: 0; }
   header .repo-link:hover { color: #c9d1d9; border-color: #8b949e; }
   .container { display: flex; height: calc(100vh - 70px); }
+  .left-panels { width: 0; overflow: hidden; padding: 0;
+                 display: flex; flex-direction: column; gap: 10px;
+                 border-right: 1px solid #21262d; min-height: 0; }
   .left { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; }
   .right { width: 440px; border-left: 1px solid #21262d; padding: 12px;
            display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  /* Show left-side panels above 1400px viewport width */
+  @media (min-width: 1400px) {
+    .left-panels { width: 380px; padding: 12px; }
+  }
+  @media (min-width: 2200px) {
+    .left-panels { width: 460px; }
+  }
   .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
   .controls label { font-size: 12px; color: #8b949e; }
   .controls select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
@@ -122,8 +132,11 @@
      Panels switch from flex-fill to fixed-height tiles so they don't
      stretch into illegible aspect ratios.
   */
-  @media (min-width: 1600px) {
-    .right { width: 920px; flex-direction: row; flex-wrap: wrap;
+  /* Above ~1800px: right column starts laying out as a 2-column grid.
+     Pushed past the original 1600px breakpoint to leave room for the new
+     .left-panels (which fades in at 1400px). */
+  @media (min-width: 1800px) {
+    .right { width: 880px; flex-direction: row; flex-wrap: wrap;
              align-content: flex-start; gap: 12px; }
     .right > .restore-bar { width: 100%; flex: 0 0 100%; }
     .right > .info-card  { width: 100%; flex: 0 0 100%; }
@@ -131,10 +144,11 @@
     .right > .panel.maximized { width: 100%; flex-basis: 100%;
                                  height: calc(100vh - 110px); }
   }
-  @media (min-width: 2200px) {
-    .right { width: 1400px; }
+  /* 4K: 3-column right grid + wider left panels */
+  @media (min-width: 2400px) {
+    .right { width: 1280px; }
     .right > .panel { flex: 0 0 calc(33.333% - 8px); height: 420px; }
-    /* Give the LC double-width — time-series legibility is the priority. */
+    /* Light curve gets 2 of 3 columns. */
     .right > .panel[data-name="Light curve"] { flex: 0 0 calc(66.666% - 6px); }
   }
   /* On any screen with extra height, let the title text grow */
@@ -156,6 +170,17 @@
 </header>
 
 <div class="container">
+  <div class="left-panels" id="left-panels">
+    <div class="panel" data-name="Confusion matrix">
+      <div class="panel-title"><span>Linear-probe confusion matrix</span></div>
+      <div id="cm-panel-plot" class="panel-plot"></div>
+      <div class="legend-note" id="cm-panel-note"></div>
+    </div>
+    <div class="panel" data-name="Class distribution">
+      <div class="panel-title"><span>Class distribution &amp; per-class F1</span></div>
+      <div id="class-dist-plot" class="panel-plot"></div>
+    </div>
+  </div>
   <div class="left">
     <div class="controls">
       <label>View:</label>
@@ -449,6 +474,12 @@ async function init() {
   perLayerUmap = pl;
   populateLayerDropdown();
   drawPLBackdrop();
+  // Left-side panels (only render if data available; element exists either way)
+  if (probePredictions) {
+    drawConfusionMatrix({ divId: "cm-panel-plot", summaryDivId: "cm-panel-note",
+                          axisLabels: false, bg: "#0d1117" });
+    drawClassDistribution();
+  }
   setupPanelControls();
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
@@ -585,7 +616,7 @@ async function init() {
       return;
     }
     document.getElementById("cm-modal").classList.add("open");
-    drawConfusionMatrix();
+    drawConfusionMatrix({ divId: "cm-plot", summaryDivId: "cm-summary", axisLabels: true, bg: "#161b22" });
   });
   document.getElementById("cm-close").addEventListener("click", () => {
     document.getElementById("cm-modal").classList.remove("open");
@@ -798,14 +829,10 @@ function renderKnnList(src) {
   `;
 }
 
-function drawConfusionMatrix() {
-  if (!probePredictions) return;
-  const div = document.getElementById("cm-plot");
-  const summary = document.getElementById("cm-summary");
-
+function _buildConfusionData() {
+  if (!probePredictions) return null;
   const classes = probePredictions.classes;
   const n = classes.length;
-  // Build counts: row = true, col = pred
   const counts = Array.from({length: n}, () => new Array(n).fill(0));
   const rowTotals = new Array(n).fill(0);
   for (const p of probePredictions.predictions) {
@@ -815,45 +842,113 @@ function drawConfusionMatrix() {
     counts[ti][pi] += 1;
     rowTotals[ti] += 1;
   }
-  // Normalize per row to get recall (diagonal = per-class recall)
   const recall = counts.map((row, i) =>
     row.map(v => rowTotals[i] > 0 ? v / rowTotals[i] : 0)
   );
+  return { classes, counts, recall };
+}
 
-  summary.innerHTML = `
-    <div>Logistic-regression balanced accuracy:
-      <strong>${(probePredictions.logr_balanced_accuracy * 100).toFixed(1)}%</strong>
-      &nbsp;·&nbsp;
-      kNN (k=10, cos): <strong>${(probePredictions.knn_balanced_accuracy * 100).toFixed(1)}%</strong>
-      &nbsp;·&nbsp;
-      ${probePredictions.predictions.length.toLocaleString()} sources, 5-fold CV.
-    </div>
-  `;
+function drawConfusionMatrix(opts) {
+  // opts: { divId, summaryDivId, axisLabels (bool), bg }
+  if (!probePredictions) return;
+  const data = _buildConfusionData();
+  if (!data) return;
+  const div = document.getElementById(opts.divId);
+  if (!div) return;
+
+  if (opts.summaryDivId) {
+    const s = document.getElementById(opts.summaryDivId);
+    if (s) {
+      s.innerHTML = `
+        <div>LogReg balanced acc:
+          <strong>${(probePredictions.logr_balanced_accuracy * 100).toFixed(1)}%</strong>
+          &nbsp;·&nbsp;
+          kNN: <strong>${(probePredictions.knn_balanced_accuracy * 100).toFixed(1)}%</strong>
+          &nbsp;·&nbsp;
+          ${probePredictions.predictions.length.toLocaleString()} sources · 5-fold CV
+        </div>`;
+    }
+  }
 
   const trace = {
-    z: recall, x: classes, y: classes,
+    z: data.recall, x: data.classes, y: data.classes,
     type: "heatmap",
     colorscale: [[0, "#0d1117"], [0.2, "#1f2630"], [0.5, "#39434f"],
                  [0.7, "#58a6ff"], [1, "#79c0ff"]],
-    colorbar: { title: "recall", thickness: 12,
-                tickfont: {color: "#8b949e"}, titlefont: {color: "#c9d1d9"} },
+    colorbar: { title: "recall", thickness: 10, len: 0.8,
+                tickfont: {color: "#8b949e", size: 10},
+                titlefont: {color: "#c9d1d9", size: 10} },
     hovertemplate: "true=%{y}<br>pred=%{x}<br>recall=%{z:.3f}<extra></extra>",
   };
+  const labelOn = opts.axisLabels !== false;
+  const bg = opts.bg || "#161b22";
   const layout = {
-    paper_bgcolor: "#161b22", plot_bgcolor: "#161b22",
-    margin: {l: 70, r: 60, t: 10, b: 70},
-    xaxis: { title: "Predicted class", color: "#8b949e",
-             gridcolor: "#21262d", tickangle: -25 },
-    yaxis: { title: "True class", color: "#8b949e",
-             gridcolor: "#21262d", autorange: "reversed" },
+    paper_bgcolor: bg, plot_bgcolor: bg,
+    margin: {l: 60, r: 50, t: 6, b: 60},
+    xaxis: { title: labelOn ? "Predicted class" : "", color: "#8b949e",
+             gridcolor: "#21262d", tickangle: -35,
+             tickfont: {size: 10} },
+    yaxis: { title: labelOn ? "True class" : "", color: "#8b949e",
+             gridcolor: "#21262d", autorange: "reversed",
+             tickfont: {size: 10} },
   };
   Plotly.newPlot(div, [trace], layout, {responsive: true, displayModeBar: false});
   div.removeAllListeners && div.removeAllListeners("plotly_click");
-  div.on("plotly_click", data => {
-    const trueClass = data.points[0].y;
-    const predClass = data.points[0].x;
+  div.on("plotly_click", evt => {
+    const trueClass = evt.points[0].y;
+    const predClass = evt.points[0].x;
     showCellSources(trueClass, predClass);
   });
+}
+
+function drawClassDistribution() {
+  const div = document.getElementById("class-dist-plot");
+  if (!div || !probePredictions) {
+    if (div) div.innerHTML = `<div class="placeholder">probe_predictions.json missing</div>`;
+    return;
+  }
+  // Per-class counts AND per-class F1 from probePredictions (recompute)
+  const classes = probePredictions.classes;
+  const counts = {}, tp = {}, fp = {}, fn = {};
+  classes.forEach(c => { counts[c] = 0; tp[c] = 0; fp[c] = 0; fn[c] = 0; });
+  for (const p of probePredictions.predictions) {
+    counts[p.true] = (counts[p.true] || 0) + 1;
+    if (p.true === p.pred_logr) tp[p.true]++;
+    else { fp[p.pred_logr] = (fp[p.pred_logr] || 0) + 1;
+           fn[p.true] = (fn[p.true] || 0) + 1; }
+  }
+  const sorted = classes.slice().sort((a, b) => counts[b] - counts[a]);
+  const colors = sorted.map(c => VAR_TYPE_COLORS[c] || "#888");
+  const f1 = sorted.map(c => {
+    const prec = tp[c] / Math.max(tp[c] + fp[c], 1);
+    const rec = tp[c] / Math.max(tp[c] + fn[c], 1);
+    return (prec + rec) > 0 ? 2 * prec * rec / (prec + rec) : 0;
+  });
+  const traceCount = {
+    x: sorted.map(c => counts[c]), y: sorted, type: "bar", orientation: "h",
+    marker: { color: colors }, name: "count",
+    hovertemplate: "%{y}: %{x:,} sources<extra></extra>",
+    xaxis: "x", yaxis: "y",
+  };
+  const traceF1 = {
+    x: f1, y: sorted, type: "scatter", mode: "markers",
+    marker: { color: colors, size: 8, line: {color: "#fff", width: 1.2}, symbol: "diamond" },
+    name: "F1",
+    hovertemplate: "%{y}: F1=%{x:.2f}<extra></extra>",
+    xaxis: "x2", yaxis: "y",
+  };
+  const layout = {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
+    margin: {l: 60, r: 12, t: 26, b: 30},
+    xaxis: { title: "count", domain: [0, 0.55], color: "#8b949e", gridcolor: "#21262d",
+             tickfont: {size: 10}, type: "log" },
+    xaxis2: { title: "F1", domain: [0.62, 1], color: "#8b949e", gridcolor: "#21262d",
+              range: [0, 1], tickfont: {size: 10} },
+    yaxis: { color: "#8b949e", autorange: "reversed", tickfont: {size: 10} },
+    showlegend: false,
+  };
+  Plotly.newPlot(div, [traceCount, traceF1], layout,
+                 { responsive: true, displayModeBar: false });
 }
 
 function showCellSources(trueClass, predClass) {
