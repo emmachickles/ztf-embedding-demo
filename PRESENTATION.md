@@ -41,9 +41,9 @@ Time | Action | Talking point
 2:45 | Click **Class info** | (one beat — show the 11 variability classes) "These eleven classes were never given to the model."
 3:00 | Toggle **View → RA/Dec** | "Same 25 K sources, projected onto the sky. Watch what happens when I color by class…" *(switch back to UMAP)*
 3:30 | Toggle **View → Galaxy (X–Y)** | "And from above the Galaxy, only the ~10 K with reliable Gaia parallaxes. RR Lyrae trace a halo population; BY Dra rotational variables sit close to the Sun. The model never saw distances, but the embedding it learned cleanly separates these populations."
-4:00 | Open the **Model** popup | "The architecture: Fourier embedding of irregular epochs, six transformer layers, two disentangled output heads — z_sig for signal, z_qual for noise. Trained contrastively on a million light curves."
-4:30 | Toggle **Layer dropdown** through 1 → 6 → z_sig | "And here's where the magic happens. At Layer 1 the embedding looks random. By Layer 6, full class structure has emerged. This is what 'representation learning' looks like in time-domain astronomy."
-5:00 | Close. | "Foundation model for transient astronomy — still labeled-supervised today, *not* tomorrow. Questions?"
+4:00 | Point at the **architecture diagram** on the left. | "The architecture: Fourier embedding of irregular epochs, six transformer encoder layers, two disentangled output heads — z_sig for signal, z_qual for noise. Trained contrastively on 100,000 light curves with no class labels."
+4:30 | Click through the **Layer boxes** in the architecture diagram (1 → 6 → z_sig). Watch the **accuracy meter** below. | "The accuracy meter on the left shows the linear-probe balanced accuracy at each layer. Layer 1 already has 48% — class structure is mostly there from the start. Each transformer layer adds ~0.5 to 1 point: Layer 6 peaks at 51.3%. **But watch what happens when I click z_sig** — the final head, the thing the model was actually trained to optimize, drops accuracy back to 47.9%. The encoder *learned* the structure; the contrastive projection *threw some of it away* because it was optimizing for similarity, not classification. That's a real, measurable failure mode of contrastive heads — and it's the kind of finding the demo lets you see in seconds rather than weeks."
+5:00 | Close. | "Foundation model for time-domain astronomy — still labeled-supervised today, *not* tomorrow. Questions?"
 
 ---
 
@@ -66,6 +66,22 @@ Color-by Period or Absolute G. Click a Cepheid.
 overlaid. RR Lyrae form the horizontal-branch line at M_G ≈ 0.5.
 This is the foundation of the cosmic distance ladder, and the model
 *reconstructs* it from light curves alone."
+
+6:30–7:00 — **The encoder learns; the head loses information.**
+Walk over to the architecture mini-diagram on the left. Click each Layer
+box, calling out the meter value as it climbs.
+"This is the linear probe at each encoder layer. Layer 1 starts at 48%,
+each subsequent layer adds half a point or so, Layer 6 peaks at 51.3%.
+Now click the z_sig box, the final 128-d projection. The accuracy
+*drops* back to 47.9%. The model was trained on contrastive loss, not
+classification — so the head is solving a different optimization
+problem than 'separate the classes,' and it loses about 3 percentage
+points of class structure when it does. The pretty UMAP clusters
+visualize z_sig because that's what the contrastive head exposes for
+similarity, but if your downstream task is classification, the *encoder
+output* is what you want, not z_sig. This is a lesson that scales to
+every contrastive foundation model — see the literature on linear-probe
+mismatch in CLIP or DINO."
 
 7:00–8:00 — **z_qual: disentangled noise channel.**
 Color-by z_qual.
@@ -157,6 +173,20 @@ front-end."
   Disentanglement check: linear probe on z_qual is near random chance
   for class.
 
+- **"Why does the linear-probe accuracy *drop* from Layer 6 to z_sig?"**
+  Because the head wasn't optimized for classification. The encoder's
+  Layer 6 output is 256-d and class-separable to 51.3% balanced
+  accuracy. The z_sig MLP head projects that to 128-d under InfoNCE
+  contrastive loss, which optimizes for *cosine similarity to
+  augmented views*, not for class boundary separation. Some
+  class-discriminative information lives along directions that
+  contrastive doesn't preserve. Same pattern shows up in CLIP and
+  DINO — the encoder representation generally outperforms the
+  projection-head output on linear probes. Practical takeaway: for
+  downstream classification, freeze the encoder and probe Layer 6,
+  not z_sig. The demo's left-panel meter shows this in real time as
+  you click through the Layer dropdown.
+
 ### From tech / ML audiences
 
 - **"How does this scale?"**
@@ -215,6 +245,32 @@ front-end."
   about z_qual outliers near the EW cluster.)*
 
 ---
+
+## What the audience sees on the Vibe Board
+
+When you open the demo on the 55″ screen (viewport ≥ 1400 px wide), the
+layout is **three columns**:
+
+- **Left column** — model performance dashboard (always visible):
+  - Architecture mini-diagram (clickable layer boxes that drive the
+    Layer dropdown)
+  - **Probe accuracy of selected layer** — big-format LogReg balanced
+    accuracy meter that updates live as you click through layers
+  - Linear-probe confusion matrix (clickable cells)
+  - Class distribution + per-class F1
+- **Center** — the UMAP scatter, controls, search bar, view/layer
+  dropdowns
+- **Right column** — per-source detail (lights up on click):
+  - Source-info card with kNN chips
+  - Light curve (raw / phase-folded toggle, pin & compare)
+  - Gaia HR diagram (with optional per-class isolines)
+  - Lomb–Scargle periodogram (catalog period + 0.5×/2× / daily-alias
+    markers)
+  - Period–luminosity diagram
+  - k-NN strip — 5 mini phase-folded LCs of the nearest neighbors
+
+On a laptop (< 1400 px) the left column collapses; the same content is
+still reachable via the modal buttons (Confusion / Model).
 
 ## Setup checklist
 
