@@ -591,11 +591,23 @@ async function init() {
     }
   });
 
-  // Presets modal
+  // Presets modal — re-picked so every class representative has a finite
+  // HR position (parallax SNR > 5) AND a finite period. Each is the
+  // median-period source from the top-40 highest-LS-significance subset
+  // of sources that meet both constraints. Comments show their P / abs G /
+  // BP-RP so you can mentally pre-check "where this class lives".
   const PRESETS = {
-    "RRc": 4430, "EA": 7010, "RR": 4730, "EW": 5071, "DSCT": 24973,
-    "BYDra": 12549, "SR": 7639, "CEPII": 4238, "RSCVN": 6752,
-    "CEP": 13776, "Mira": 23353,
+    "BYDra": 4172,   // P=1.08 d  · M_G= 6.3  · BP-RP=1.37   (main-seq, late type)
+    "CEP":   21560,  // P=3.95 d  · M_G=-0.5  · BP-RP=2.94   (yellow supergiant)
+    "CEPII": 4237,   // P=5.11 d  · M_G=-2.0  · BP-RP=0.79   (Pop II Cepheid)
+    "DSCT":  24700,  // P=0.064 d · M_G= 1.85 · BP-RP=0.45   (instability strip / upper MS)
+    "EA":    8328,   // P=0.83 d  · M_G= 4.35 · BP-RP=1.36   (detached EB)
+    "EW":    5071,   // P=0.33 d  · M_G= 5.54 · BP-RP=1.27   (contact EB)
+    "Mira":  11894,  // P=204 d   · M_G=-1.3  · BP-RP=5.93   (AGB tip, very red)
+    "RR":    12300,  // P=0.58 d  · M_G=-0.17 · BP-RP=0.64   (horizontal branch)
+    "RRc":   3990,   // P=0.32 d  · M_G= 0.64 · BP-RP=0.49   (HB, first-overtone)
+    "RSCVN": 6752,   // P=0.24 d  · M_G= 2.24 · BP-RP=0.63   (chromosphericly active)
+    "SR":    7639,   // P=55.5 d  · M_G= 1.84 · BP-RP=1.58   (semi-regular giant)
   };
   const presetsGrid = document.getElementById("presets-grid");
   Object.entries(PRESETS).forEach(([cls, idx]) => {
