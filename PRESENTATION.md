@@ -226,6 +226,125 @@ front-end."
 - One source pre-selected via permalink hash if you want a known good
   starting LC (e.g. `…demo/#0` for an RRc)
 
+## How to practice — a 2-week run-up plan
+
+The tighter you can make the demo, the better. The mistake is to read
+the script once and call it done; the goal is *muscle memory* on the
+30-second pitch and *confident improvisation* on the 5- and 10-min.
+
+### Day 1 — read & map
+
+1. Read `PRESENTATION.md` end-to-end, slowly. Don't try to memorize.
+2. Open the live demo on a regular screen and click through each
+   feature *while reading the matching section of the script*. Notice
+   any beat where the script doesn't match what's on screen — those
+   are the places that'll trip you up live.
+3. Make a list of every claim with a number in it (e.g., "25 K
+   sources", "48% balanced accuracy", "11 classes", "100 K training
+   set"). Verify each against `TODO.md` so you're not surprised.
+
+### Days 2–3 — lightning pitch, internalize
+
+The 30-sec pitch should be muscle memory by the end of day 3.
+
+1. Practice it out loud, looking at a mirror or your laptop camera, 5
+   times in a row. The lines you stumble over are signals to rewrite.
+2. Then do it 5 more times *without the screen* — stand up, walk
+   around. The pitch should survive without the visual.
+3. Time yourself. 30 seconds is tight. If you're at 45+ s, trim
+   words, not concepts.
+4. Finally, practice the **one-sentence version** ("self-supervised
+   transformer on ZTF, learns variable-star structure with no labels,
+   en route to LSST"). You'll need this for hallway intros.
+
+### Days 4–6 — 5-min walkthrough, with feedback
+
+1. Run through the 5-min script once *with* the live demo, watching
+   the clock. First pass will be ~7 minutes. Don't worry, that's
+   normal.
+2. Identify *which beats* ran long. Often it's the periodogram or the
+   architecture popup — they're pretty, but spending 2 min there
+   eats your budget.
+3. Cut anything that doesn't directly serve "this model has learned
+   astrophysics from raw light curves with no labels." Anything else
+   is bonus material for the 10-min version.
+4. Get an audience. **One person you trust** is enough. Ideally one
+   physicist *and* one non-physicist; their questions are different
+   and you need both rehearsals.
+5. Ask them to interrupt with questions. Note which questions threw
+   you. Pre-script answers for the top 3.
+
+### Days 7–10 — 10-min deep dive, anticipate Q&A
+
+1. Run the 10-min version through twice, once for an astronomer
+   audience and once for a tech/ML audience. Adjust emphasis: for
+   astronomers, dwell on the HR/PL diagrams and the period-recovery
+   issues. For ML folks, dwell on the architecture, loss, and the
+   shape-without-period diagnosis.
+2. Read the Q&A bank in `PRESENTATION.md` and **say each answer out
+   loud**. Some sound great in writing and clunky out loud — fix
+   those.
+3. Add 2–3 questions you anticipate from your specific audience,
+   write your answers in the bank, rehearse them.
+
+### Days 11–13 — dress rehearsal on the actual hardware
+
+This is the most-skipped step and the one that pays the most.
+
+1. Connect to the Vibe Board exactly as you will on the day. Note
+   the actual viewport size, latency to GitHub Pages, and any
+   keyboard / clicker oddities.
+2. Run the full 10-min on the Board. Things that look fine on a
+   laptop can be illegible at 8 ft viewing distance — you may want
+   to tweak fonts or zoom.
+3. Try the demo with bad-network simulation (Chrome DevTools → Slow
+   3G) to know what happens if the venue WiFi is flaky. Have the
+   local fallback ready.
+4. Test all keyboard shortcuts on your actual presentation laptop's
+   keyboard. The `?` key in particular requires Shift on US English.
+
+### Day 14 — fresh and minimal
+
+1. Don't over-rehearse the morning of. Run the 30-sec pitch twice,
+   skim the Q&A bank once, walk away.
+2. Do open the live URL once to confirm it's serving. If GitHub
+   Pages is down, switch to the local `python3 -m http.server` copy
+   ahead of time.
+3. Bookmark the PR/issue/manuscript URL you'll point people to for
+   follow-up. Be ready to give *one* concrete next step for anyone
+   who's interested.
+
+### Crutches that help
+
+- **A rolling timer.** Keep a phone with a stopwatch visible during
+  practice. After day 5 you should know "this is the 90-second mark"
+  by the section you're on.
+- **A clicker (or `↓` on the keyboard).** Scrolling with a clicker
+  feels natural; clicking individual points needs a real mouse.
+- **A throat lozenge.** Demos rely on your voice; presentations cause
+  dry mouth.
+- **A backup window with the demo already loaded.** If your live
+  browser dies, you have a second one ready.
+- **A canned source.** Pre-load the URL with `#7` (an RR Lyrae) so
+  the demo opens with a sensible initial selection if you arrive at
+  the podium under time pressure.
+
+### What to avoid
+
+- Reading from the script during the talk. You'll lose eye contact
+  and sound robotic. The script is a scaffold — practice until you
+  can ad-lib around it.
+- Promising the SSL representation is "better than classical." It
+  isn't, yet (probe results are honest in the Q&A). Frame it as
+  "different and more general"; you'll lose credibility if you
+  oversell.
+- Live-debugging on stage. If a feature looks broken, name it briefly
+  ("…that side panel doesn't always render the contours, ignore
+  it…") and move on. Audiences forgive issues; they don't forgive
+  derailments.
+- The first 5 seconds of silence while you find your spot. Open with
+  the lightning pitch *while* the demo loads — start strong.
+
 ## Backup talking points (if something breaks)
 
 - Live demo at the local URL `http://localhost:8765/` is identical to the
