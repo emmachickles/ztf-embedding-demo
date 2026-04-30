@@ -144,6 +144,9 @@
   .panel.collapsed { flex: 0 0 auto; }
   .panel.collapsed .panel-plot,
   .panel.collapsed .legend-note { display: none !important; }
+  /* Same collapse behavior for the Source Info card */
+  .info-card.collapsed #info-content { display: none !important; }
+  .info-card.collapsed { padding-bottom: 12px; }
   /* Maximized: this panel takes the full right column; siblings hidden */
   .right.has-maximized > .panel:not(.maximized),
   .right.has-maximized > .info-card { display: none; }
@@ -291,8 +294,13 @@
   </div>
   <div class="right">
     <div class="restore-bar" id="restore-bar"></div>
-    <div class="info-card" id="info-card">
-      <h3>Source Info</h3>
+    <div class="info-card" id="info-card" data-name="Source info">
+      <h3 style="display: flex; align-items: center;">
+        <span>Source Info</span>
+        <span class="panel-tools">
+          <button class="panel-btn info-close" title="Hide panel">×</button>
+        </span>
+      </h3>
       <div id="info-content">
         <div class="placeholder" style="height: auto; padding: 8px 0;">Click a point in the scatter plot.</div>
       </div>
@@ -930,6 +938,51 @@ function setupPanelControls() {
   });
 
   refreshRestoreBar();
+
+  // Source-info card collapse — same restore-bar integration as panels.
+  const infoCard = document.getElementById("info-card");
+  const infoBtn = infoCard ? infoCard.querySelector(".info-close") : null;
+  if (infoCard && infoBtn) {
+    function syncRestoreForInfo() {
+      // Add a chip to the restore bar if collapsed; remove if not
+      const existing = restoreBar.querySelector('[data-restore-info="1"]');
+      if (infoCard.classList.contains("collapsed")) {
+        if (!existing) {
+          const chip = document.createElement("button");
+          chip.className = "restore-chip";
+          chip.textContent = "+ Source info";
+          chip.dataset.restoreInfo = "1";
+          chip.addEventListener("click", () => {
+            infoCard.classList.remove("collapsed");
+            infoBtn.textContent = "×";
+            infoBtn.title = "Hide panel";
+            restoreBar.removeChild(chip);
+            restoreBar.classList.toggle(
+              "has-hidden",
+              restoreBar.children.length > 0,
+            );
+            window.dispatchEvent(new Event("resize"));
+          });
+          restoreBar.appendChild(chip);
+        }
+      } else if (existing) {
+        restoreBar.removeChild(existing);
+      }
+      restoreBar.classList.toggle(
+        "has-hidden",
+        restoreBar.children.length > 0,
+      );
+    }
+    infoBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      infoCard.classList.toggle("collapsed");
+      const collapsed = infoCard.classList.contains("collapsed");
+      infoBtn.textContent = collapsed ? "+" : "×";
+      infoBtn.title = collapsed ? "Show panel" : "Hide panel";
+      syncRestoreForInfo();
+      window.dispatchEvent(new Event("resize"));
+    });
+  }
 }
 
 function renderKnnList(src) {
