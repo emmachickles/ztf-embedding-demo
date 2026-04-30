@@ -12,3 +12,9 @@ __pycache__/
 .venv/
 venv/
 .ipynb_checkpoints/
+
+# Internal docs — kept locally, not published.
+# Presenter scripts, Q&A, practice plan; project roadmap; failure-mode
+# analysis. Useful prep, not for public consumption.
+PRESENTATION.md
+TODO.md
