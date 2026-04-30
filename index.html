@@ -101,6 +101,29 @@
     line-height: 1.5; }
   .arch-caption code { font-family: "SF Mono", Menlo, monospace;
     background: #0d1117; padding: 1px 5px; border-radius: 3px; color: #c9d1d9; }
+  /* Compact architecture mini-diagram (left panel) */
+  .arch-mini-grid { display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 6px 4px; }
+  .arch-mini-box { background: #0d1117; border: 1px solid #30363d;
+    border-radius: 4px; padding: 4px 8px; text-align: center;
+    font-size: 11px; color: #c9d1d9; min-width: 80%; }
+  .arch-mini-sub { color: #8b949e; font-size: 10px; }
+  .arch-mini-arrow { color: #6e7681; font-size: 12px; line-height: 1; }
+  .arch-mini-input { border-color: #58a6ff; }
+  .arch-mini-embed { border-color: #3aa53a; }
+  .arch-mini-trans { border-color: #3aa53a; padding: 2px 6px;
+    font-family: "SF Mono", Menlo, monospace; }
+  .arch-mini-pool { border-color: #d29922; }
+  .arch-mini-zsig { border-color: #58a6ff; }
+  .arch-mini-zqual { border-color: #f85149; }
+  .arch-mini-stack { display: flex; flex-direction: column; gap: 2px;
+    width: 80%; }
+  .arch-mini-split { color: #6e7681; font-size: 11px; padding: 0 30%; }
+  .arch-mini-heads { display: flex; gap: 4px; width: 80%; }
+  .arch-mini-heads .arch-mini-box { flex: 1; min-width: 0; padding: 4px; }
+  .arch-mini-active { background: rgba(88, 166, 255, 0.15);
+    border-color: #58a6ff !important; box-shadow: 0 0 0 1px #58a6ff inset; }
+  .arch-mini-box[data-layer]:hover { background: #161b22; }
   .knn-chip { font-size: 11px; color: #c9d1d9; cursor: pointer;
     border: 1px solid var(--chip, #30363d); border-left: 3px solid var(--chip, #30363d);
     background: #0d1117; border-radius: 3px; padding: 2px 7px;
@@ -171,6 +194,34 @@
 
 <div class="container">
   <div class="left-panels" id="left-panels">
+    <div class="panel arch-panel" data-name="Architecture">
+      <div class="panel-title"><span>SSL transformer</span></div>
+      <div id="arch-mini" class="panel-plot" style="overflow: auto;"></div>
+    </div>
+    <div class="panel meter-panel" data-name="Probe accuracy">
+      <div class="panel-title"><span>Probe accuracy of selected layer</span></div>
+      <div id="probe-meter" class="panel-plot" style="display: flex; flex-direction: column; padding: 12px;">
+        <div id="probe-meter-bignum" style="font-size: 38px; font-weight: 600;
+                                            color: #58a6ff; line-height: 1;">—</div>
+        <div id="probe-meter-sub" style="font-size: 11px; color: #8b949e;
+                                         margin-top: 4px;">no layer selected</div>
+        <div id="probe-meter-bar" style="margin-top: 10px; height: 8px;
+                                         background: #21262d; border-radius: 4px;
+                                         overflow: hidden; position: relative;">
+          <div id="probe-meter-fill" style="position: absolute; top: 0; left: 0;
+            height: 100%; width: 0; background: linear-gradient(90deg,#39434f,#58a6ff);
+            transition: width 0.6s cubic-bezier(.2,.7,.2,1);"></div>
+        </div>
+        <div id="probe-meter-tickbar" style="margin-top: 4px; font-size: 10px;
+                                              color: #6e7681; display: flex;
+                                              justify-content: space-between;">
+          <span>0%</span><span>chance (1/11)</span><span>100%</span>
+        </div>
+        <div id="probe-meter-context" style="margin-top: 12px; font-size: 11px;
+                                             color: #8b949e; line-height: 1.5;">
+        </div>
+      </div>
+    </div>
     <div class="panel" data-name="Confusion matrix">
       <div class="panel-title"><span>Linear-probe confusion matrix</span></div>
       <div id="cm-panel-plot" class="panel-plot"></div>
@@ -451,9 +502,10 @@ const LC_CACHE_LIMIT = 6;
 let hrClassDensity = null;
 let hrIsolinesOn = false;
 let probePredictions = null;  // {classes, predictions: [{idx, true, pred_logr, ...}]}
+let perLayerProbe = null;     // {names, balanced_accuracy, n_classes, n_sources}
 
 async function init() {
-  const [pts, mf, hr, kn, pl, hrcd, prb] = await Promise.all([
+  const [pts, mf, hr, kn, pl, hrcd, prb, plp] = await Promise.all([
     fetch("points.json").then(r => r.json()),
     fetch("manifest.json").then(r => r.json()),
     fetch("hr_background.json").then(r => r.json()),
@@ -461,9 +513,11 @@ async function init() {
     fetch("per_layer_umap.json").then(r => r.ok ? r.json() : null).catch(() => null),
     fetch("hr_class_density.json").then(r => r.ok ? r.json() : null).catch(() => null),
     fetch("probe_predictions.json").then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch("per_layer_probe.json").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
   hrClassDensity = hrcd;
   probePredictions = prb;
+  perLayerProbe = plp;
   points = pts;
   // Add positional index so per-layer coord lookups are O(1)
   points.forEach((p, i) => { p.posIdx = i; });
@@ -480,6 +534,8 @@ async function init() {
                           axisLabels: false, bg: "#0d1117" });
     drawClassDistribution();
   }
+  drawArchMini();
+  updateProbeMeter(currentLayer);
   setupPanelControls();
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
@@ -503,6 +559,7 @@ async function init() {
     const newLayer = e.target.value;
     if (newLayer === currentLayer) return;
     currentLayer = newLayer;
+    updateProbeMeter(currentLayer);
     // Layer-toggle is meaningful only in UMAP view. Re-render via the same
     // path as a color-by change so axes get rebuilt cleanly — Plotly.animate
     // on scattergl can leave the trace data in an inconsistent state when
@@ -827,6 +884,110 @@ function renderKnnList(src) {
       <div id="knn-chips" style="display: flex; flex-wrap: wrap; gap: 4px;">${chips}</div>
     </div>
   `;
+}
+
+// ── Architecture mini-diagram (compact version of the Model modal) ──
+function drawArchMini() {
+  const div = document.getElementById("arch-mini");
+  if (!div) return;
+  // Reuse the same color scheme as the Model modal but at smaller scale.
+  // Highlight whichever layer the Layer dropdown currently selects.
+  div.innerHTML = `
+    <div class="arch-mini-grid">
+      <div class="arch-mini-box arch-mini-input">Input · (t, flux, σ)<br>
+        <span class="arch-mini-sub">irregular epochs · multi-band</span></div>
+      <div class="arch-mini-arrow">↓</div>
+      <div class="arch-mini-box arch-mini-embed">Fourier embedding → 256-d</div>
+      <div class="arch-mini-arrow">↓</div>
+      <div class="arch-mini-stack" id="arch-mini-stack">
+        ${[1,2,3,4,5,6].map(i =>
+          `<div class="arch-mini-box arch-mini-trans" data-layer="${i}">Layer ${i}</div>`
+        ).join("")}
+      </div>
+      <div class="arch-mini-arrow">↓</div>
+      <div class="arch-mini-box arch-mini-pool">Masked-mean pool · 256-d</div>
+      <div class="arch-mini-split">↙ &nbsp; ↘</div>
+      <div class="arch-mini-heads">
+        <div class="arch-mini-box arch-mini-zsig" data-layer="z_sig (final)">
+          <strong>z_sig</strong><br><span class="arch-mini-sub">128-d · InfoNCE</span></div>
+        <div class="arch-mini-box arch-mini-zqual">
+          <strong>z_qual</strong><br><span class="arch-mini-sub">scalar · MSE(σ)</span></div>
+      </div>
+    </div>
+  `;
+  refreshArchMiniHighlight();
+  // Click any layer box to set the Layer dropdown
+  div.querySelectorAll(".arch-mini-box[data-layer]").forEach(b => {
+    b.addEventListener("click", () => {
+      const target = b.dataset.layer;
+      const sel = document.getElementById("layer-select");
+      const opt = Array.from(sel.options).find(o => o.value === target);
+      if (opt) { sel.value = target; sel.dispatchEvent(new Event("change")); }
+    });
+    b.style.cursor = "pointer";
+  });
+}
+
+function refreshArchMiniHighlight() {
+  const stack = document.getElementById("arch-mini-stack");
+  if (!stack) return;
+  // Clear all highlights
+  document.querySelectorAll(".arch-mini-box").forEach(b => {
+    b.classList.remove("arch-mini-active");
+  });
+  // Highlight the active layer / z_sig
+  let target = null;
+  if (currentLayer && currentLayer.startsWith("Layer ")) {
+    const n = currentLayer.split(" ")[1];
+    target = stack.querySelector(`.arch-mini-box[data-layer="${n}"]`);
+  } else if (currentLayer === "z_sig (final)" || currentLayer === "default") {
+    target = document.querySelector(`.arch-mini-box[data-layer="z_sig (final)"]`);
+  }
+  if (target) target.classList.add("arch-mini-active");
+}
+
+// ── Probe accuracy meter ──────────────────────────────────────────
+function updateProbeMeter(layer) {
+  const big = document.getElementById("probe-meter-bignum");
+  const sub = document.getElementById("probe-meter-sub");
+  const fill = document.getElementById("probe-meter-fill");
+  const ctx = document.getElementById("probe-meter-context");
+  if (!big || !sub || !fill) return;
+  refreshArchMiniHighlight();
+  if (!perLayerProbe) {
+    big.textContent = "—"; sub.textContent = "per_layer_probe.json missing";
+    fill.style.width = "0%"; if (ctx) ctx.textContent = "";
+    return;
+  }
+  const i = perLayerProbe.names.indexOf(layer);
+  if (i < 0) {
+    big.textContent = "—"; sub.textContent = `Layer "${layer}" not in probe data`;
+    fill.style.width = "0%"; if (ctx) ctx.textContent = "";
+    return;
+  }
+  const acc = perLayerProbe.balanced_accuracy[i];
+  big.textContent = (acc * 100).toFixed(1) + "%";
+  big.style.color = "#58a6ff";
+  sub.textContent = `${layer} · ${perLayerProbe.n_classes}-class CV · ${perLayerProbe.n_sources.toLocaleString()} sources`;
+  fill.style.width = (acc * 100).toFixed(1) + "%";
+  // Tiny context line: how this compares to the "best" layer and z_sig
+  if (ctx) {
+    // Find best layer (excluding default duplicate)
+    let bestI = 0, bestV = 0;
+    perLayerProbe.balanced_accuracy.forEach((v, j) => {
+      if (perLayerProbe.names[j] === "default") return;
+      if (v > bestV) { bestV = v; bestI = j; }
+    });
+    const zSigI = perLayerProbe.names.indexOf("z_sig (final)");
+    const zSigAcc = zSigI >= 0 ? perLayerProbe.balanced_accuracy[zSigI] : null;
+    let lines = [];
+    if (i !== bestI) lines.push(`Best: <strong>${perLayerProbe.names[bestI]}</strong> at ${(bestV * 100).toFixed(1)}%`);
+    if (zSigAcc != null && layer !== "z_sig (final)" && layer !== "default") {
+      const delta = (acc - zSigAcc) * 100;
+      lines.push(`Δ vs z_sig: <strong style="color:${delta >= 0 ? '#2ea043' : '#f85149'}">${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pp</strong>`);
+    }
+    ctx.innerHTML = lines.join("<br>");
+  }
 }
 
 function _buildConfusionData() {
