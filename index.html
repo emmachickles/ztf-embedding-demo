@@ -1381,14 +1381,15 @@ function buildKnnTraces(srcIdx) {
 
   const [sx, sy] = viewXY(src, currentView);
   const traces = [];
-  // Neighbors trace
+  // Neighbors trace — only ~20 points; use plain scatter (SVG) so we don't
+  // burn another WebGL context on top of the main scatter.
   if (nbrXs.length) {
     traces.push({
       x: nbrXs, y: nbrYs,
       customdata: nbrIds,
-      mode: "markers", type: "scattergl",
+      mode: "markers", type: "scatter",
       name: KNN_TRACE_TAG,
-      marker: { size: 7, color: nbrColors,
+      marker: { size: 9, color: nbrColors,
                 line: { color: "#fff", width: 1 } },
       hovertemplate: "neighbor #%{customdata}<extra></extra>",
       showlegend: false,
@@ -1709,7 +1710,20 @@ async function renderKnnStrip(src) {
     return;
   }
 
-  // Pre-build the 5 mini-divs immediately so user sees layout
+  // CRITICAL: purge any existing Plotly instances inside the strip *before*
+  // wiping innerHTML, otherwise Plotly's WebGL contexts leak. Browsers cap
+  // active WebGL contexts (typically ~16); without this purge the cap is
+  // hit after a few clicks and Plotly evicts the oldest context — which is
+  // the main UMAP scatter, blanking it.
+  container.querySelectorAll('div[id^="pg-"], .plotly').forEach(d => {
+    try { Plotly.purge(d); } catch (e) {}
+  });
+  // Also purge any direct child plot divs we created last time
+  Array.from(container.children).forEach(child => {
+    child.querySelectorAll('div').forEach(d => {
+      try { Plotly.purge(d); } catch (e) {}
+    });
+  });
   container.innerHTML = "";
   const mini = neighbors.map(pos => {
     const np = points[pos];
@@ -1779,7 +1793,11 @@ async function renderKnnStrip(src) {
       const x = t.map(v => (((v - tref) % period) + period) % period / period);
       traces.push({
         x, y: f,
-        mode: "markers", type: "scattergl",
+        // SVG scatter (not scattergl) — these mini plots are tiny so SVG is
+        // fine, and using scattergl here was the cause of WebGL context
+        // exhaustion (browser cap is ~16 contexts; 5 minis × multiple clicks
+        // evict the main UMAP scatter).
+        mode: "markers", type: "scatter",
         marker: { size: 2, color: shadeHex(color, fl === "g" ? 0.3 : 0), opacity: 0.7 },
         showlegend: false,
         hoverinfo: "skip",
