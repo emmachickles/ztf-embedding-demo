@@ -1444,10 +1444,19 @@ function populateBioGrid() {
   grid.innerHTML = html;
 }
 
-// ── Stylized Milky-Way backdrop for the Galaxy (X–Y) view ─────────
-// Procedurally-generated 4-arm logarithmic spiral density on a coarse
-// grid, rendered as a low-contrast grayscale heatmap behind the
-// scatter. Computed once at init.
+// ── Milky-Way backdrop based on Reid+ 2019 spiral-arm map ────────
+// Spiral arm pitch angles & log-spiral phases from Reid et al. 2019,
+// ApJ 885, 131 (BeSSeL VLBA maser parallaxes).  Their Table 2 gives
+// each arm as a log-spiral: ln(R/R_kink) = (β − β_kink) tan(ψ),
+// equivalently  β(R) = β_kink + ln(R/R_kink)/tan(ψ),
+// where β is galactocentric azimuth (radians) measured from the Sun's
+// direction (positive = toward Galactic rotation), R is in kpc, and ψ
+// is the pitch angle. Sun convention: (X, Y) = (−8.122, 0) kpc, with
+// X axis pointing from GC to Sun and Y in the direction of rotation.
+//
+// We deposit a Gaussian "ridge" along each arm's log-spiral track,
+// add a bulge + exponential disk, and render as a low-contrast
+// grayscale heatmap behind the source scatter.
 function buildGalaxyBackdrop() {
   const nx = 240, ny = 200;
   const x_lo = -12, x_hi = 4;
@@ -1455,15 +1464,52 @@ function buildGalaxyBackdrop() {
   const xs = new Array(nx), ys = new Array(ny);
   for (let i = 0; i < nx; i++) xs[i] = x_lo + (x_hi - x_lo) * i / (nx - 1);
   for (let j = 0; j < ny; j++) ys[j] = y_lo + (y_hi - y_lo) * j / (ny - 1);
+
+  // Reid+ 2019 Table 2 — pitch ψ (deg), kink-radius R_kink (kpc),
+  // kink-azimuth β_kink (deg), R-range (kpc).
+  // β increases CCW from Sun's azimuth, here using radians for math.
+  const D2R = Math.PI / 180;
+  const arms = [
+    // name              ψ    R_kink   β_kink   Rmin   Rmax   weight
+    { name: "3-kpc",    psi: 9.4,  Rk: 3.52,  bk:  15,  Rmin: 3.0,  Rmax: 4.0,  w: 0.6 },
+    { name: "Norma",    psi: 9.5,  Rk: 4.46,  bk:  18,  Rmin: 3.5,  Rmax: 6.0,  w: 0.7 },
+    { name: "Sct-Cen",  psi: 12,   Rk: 4.91,  bk:  23,  Rmin: 4.0,  Rmax: 8.0,  w: 1.0 },
+    { name: "Sgr-Car",  psi: 14.1, Rk: 6.04,  bk:  24,  Rmin: 5.0,  Rmax: 9.0,  w: 1.0 },
+    { name: "Local",    psi: 11.4, Rk: 8.26,  bk:   9,  Rmin: 7.5,  Rmax: 9.5,  w: 0.8 },
+    { name: "Perseus",  psi: 10.3, Rk: 8.87,  bk:  40,  Rmin: 7.5,  Rmax: 13,   w: 1.0 },
+    { name: "Outer",    psi: 3,    Rk: 12.24, bk:  18,  Rmin: 11,   Rmax: 15,   w: 0.7 },
+  ];
+  // Convert pitch & β to radians, precompute cotψ for log-spiral
+  for (const a of arms) {
+    a.cot = 1 / Math.tan(a.psi * D2R);
+    a.bkr = a.bk * D2R;
+  }
+
+  // Disk + bulge envelope
+  const r_bulge = 0.7, r_disk = 3.0;
+  const arm_sigma = 0.42;   // kpc — radial half-width of an arm ridge
+
+  function arm_ridge_at(r, phi) {
+    // Sum of Gaussians: for each arm find the radial offset between
+    // the arm's azimuth at this r and our query azimuth phi (mod 2π).
+    let s = 0;
+    for (const a of arms) {
+      if (r < a.Rmin * 0.8 || r > a.Rmax * 1.2) continue;
+      // Predicted azimuth on this arm at radius r
+      const beta = a.bkr + Math.log(r / a.Rk) * a.cot;
+      // Wrap difference to [-π, π]
+      let dphi = phi - beta;
+      dphi = Math.atan2(Math.sin(dphi), Math.cos(dphi));
+      // Convert angular offset to a *radial* distance from the arm
+      // ridge at the same azimuth. d ≈ r · |dphi · sin(ψ)| (small angle).
+      const d = Math.abs(r * dphi * Math.sin(a.psi * D2R));
+      const fall = Math.exp(-(d * d) / (2 * arm_sigma * arm_sigma));
+      s += a.w * fall;
+    }
+    return s;
+  }
+
   const z = new Array(ny);
-
-  // Galaxy parameters (kpc / radians)
-  const r_bulge = 0.8, r_disk = 3.5;       // exponential scale lengths
-  const N_arms = 4;
-  const pitch_rad = 12 * Math.PI / 180;     // arm pitch angle (12°)
-  const cot_pitch = 1 / Math.tan(pitch_rad);
-  const arm_amp = 0.6;                      // arm contrast
-
   for (let j = 0; j < ny; j++) {
     const y = ys[j];
     const row = new Array(nx);
@@ -1472,35 +1518,19 @@ function buildGalaxyBackdrop() {
       const r = Math.sqrt(x * x + y * y);
       const phi = Math.atan2(y, x);
 
-      // Bulge — bright near r=0, gaussian-ish
       const bulge = Math.exp(-(r * r) / (2 * r_bulge * r_bulge));
+      const disk  = Math.exp(-r / r_disk);
+      const ridge = (r > 0.5) ? arm_ridge_at(r, phi) : 0;
 
-      // Smooth disk — exponential
-      const disk = Math.exp(-r / r_disk);
-
-      // Spiral-arm modulation in log-radial coordinates.
-      // Skip the very center where log_r → −∞ would make arms diverge.
-      let arms = 1.0;
-      if (r > 0.4) {
-        const log_r = Math.log(r);
-        const arm_phase = N_arms * (phi - log_r * cot_pitch);
-        arms = 1 + arm_amp * Math.cos(arm_phase);
-      }
-
-      // Combined density. Bulge dominates near center; disk × arms outside.
-      let dens = 1.5 * bulge + disk * Math.max(arms, 0.0);
-      // Tail off harshly past ~12 kpc so the heatmap doesn't drown the
-      // outer source population on the X-Y view.
-      if (r > 11) dens *= Math.exp(-(r - 11) * 1.2);
+      let dens = 1.6 * bulge + 0.55 * disk + 0.85 * ridge;
+      if (r > 13) dens *= Math.exp(-(r - 13) * 1.2);
       row[i] = dens;
     }
     z[j] = row;
   }
-  // Normalize z to [0, 1]
   let zmax = 0;
   for (const row of z) for (const v of row) if (v > zmax) zmax = v;
   if (zmax > 0) for (const row of z) for (let i = 0; i < row.length; i++) row[i] /= zmax;
-
   return { x: xs, y: ys, z };
 }
 
