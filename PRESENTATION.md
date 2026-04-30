@@ -282,124 +282,221 @@ still reachable via the modal buttons (Confusion / Model).
 - One source pre-selected via permalink hash if you want a known good
   starting LC (e.g. `…demo/#0` for an RRc)
 
-## How to practice — a 2-week run-up plan
+## How to practice
 
-The tighter you can make the demo, the better. The mistake is to read
-the script once and call it done; the goal is *muscle memory* on the
-30-second pitch and *confident improvisation* on the 5- and 10-min.
+A concrete checklist. Each step has a clear action and a clear "done"
+criterion. Run them in order; skip any you've already nailed. Don't try
+to do all of them in one session — most need ~30 minutes.
 
-### Day 1 — read & map
+### 1. Read the playbook end-to-end (~30 min)
 
-1. Read `PRESENTATION.md` end-to-end, slowly. Don't try to memorize.
-2. Open the live demo on a regular screen and click through each
-   feature *while reading the matching section of the script*. Notice
-   any beat where the script doesn't match what's on screen — those
-   are the places that'll trip you up live.
-3. Make a list of every claim with a number in it (e.g., "25 K
-   sources", "48% balanced accuracy", "11 classes", "100 K training
-   set"). Verify each against `TODO.md` so you're not surprised.
+Open `PRESENTATION.md` and read it cover to cover, including the Q&A
+bank. Don't try to memorize anything yet — you're just building a
+mental map of what's there.
+**Done when:** you can answer "where is the 5-min script?", "where's
+the answer to the 'how does this compare to classical features?'
+question?", and "what's in the left column of the Vibe Board layout?"
+without scrolling.
 
-### Days 2–3 — lightning pitch, internalize
+### 2. Verify every number in the script against `TODO.md` (~15 min)
 
-The 30-sec pitch should be muscle memory by the end of day 3.
+Open `TODO.md` next to `PRESENTATION.md` and find the source of each
+number you'll say out loud:
+- 25,565 sources / 11 classes (TODO header / class distribution)
+- 48% balanced probe accuracy (Probe ablation table)
+- 51.3% peak at Layer 6 (left-panel meter / probe table)
+- 91% classical RF baseline (probe upper-bound table)
+- 100 K training set, 4 hours on 1 GPU, 17 min inference (lightning
+  pitch + Q&A "How does this scale?")
+**Done when:** every numeric claim in the playbook traces to a number
+in `TODO.md` or the live demo. If any are wrong, fix the playbook now.
 
-1. Practice it out loud, looking at a mirror or your laptop camera, 5
-   times in a row. The lines you stumble over are signals to rewrite.
-2. Then do it 5 more times *without the screen* — stand up, walk
-   around. The pitch should survive without the visual.
-3. Time yourself. 30 seconds is tight. If you're at 45+ s, trim
-   words, not concepts.
-4. Finally, practice the **one-sentence version** ("self-supervised
-   transformer on ZTF, learns variable-star structure with no labels,
-   en route to LSST"). You'll need this for hallway intros.
+### 3. Walk the live demo while reading the 5-min script (~30 min)
 
-### Days 4–6 — 5-min walkthrough, with feedback
+Open <https://emmachickles.github.io/ztf-embedding-demo/> at full screen
+and click through each beat of the 5-min script *while* reading it.
+Note every beat where the script doesn't match what you see — those
+are exactly the moments that will trip you up live.
+**Done when:** every beat in the 5-min script has a clean
+"click here, say this" mapping, and you've fixed any drift.
 
-1. Run through the 5-min script once *with* the live demo, watching
-   the clock. First pass will be ~7 minutes. Don't worry, that's
-   normal.
-2. Identify *which beats* ran long. Often it's the periodogram or the
-   architecture popup — they're pretty, but spending 2 min there
-   eats your budget.
-3. Cut anything that doesn't directly serve "this model has learned
-   astrophysics from raw light curves with no labels." Anything else
-   is bonus material for the 10-min version.
-4. Get an audience. **One person you trust** is enough. Ideally one
-   physicist *and* one non-physicist; their questions are different
-   and you need both rehearsals.
-5. Ask them to interrupt with questions. Note which questions threw
-   you. Pre-script answers for the top 3.
+### 4. Lock the lightning pitch — first 10 reps (~30 min)
 
-### Days 7–10 — 10-min deep dive, anticipate Q&A
+Stand up. Read the 30-second pitch out loud, looking at your laptop
+camera (not the screen). Repeat 5 times. Then close the laptop and do
+5 more *while walking around the room* — the pitch needs to survive
+without a visual aid.
+**Done when:** you've delivered the pitch 10 times without checking
+the script and without a major stumble. The lines you keep tripping
+on are signals to rewrite — change them in `PRESENTATION.md`, then
+re-do those reps.
 
-1. Run the 10-min version through twice, once for an astronomer
-   audience and once for a tech/ML audience. Adjust emphasis: for
-   astronomers, dwell on the HR/PL diagrams and the period-recovery
-   issues. For ML folks, dwell on the architecture, loss, and the
-   shape-without-period diagnosis.
-2. Read the Q&A bank in `PRESENTATION.md` and **say each answer out
-   loud**. Some sound great in writing and clunky out loud — fix
-   those.
-3. Add 2–3 questions you anticipate from your specific audience,
-   write your answers in the bank, rehearse them.
+### 5. Time the lightning pitch (~10 min)
 
-### Days 11–13 — dress rehearsal on the actual hardware
+Phone stopwatch. Three timed runs. Target ≤ 30 s.
+**Done when:** all three runs land between 25 and 32 seconds. If you
+keep going long, cut filler words ("essentially", "actually", "kind
+of"). If you keep going short, you're rushing — slow the cadence on
+"no labels, just raw photometry" — that's the line that needs to land.
 
-This is the most-skipped step and the one that pays the most.
+Also memorize the **one-sentence version** for hallway intros:
+*"Self-supervised transformer on ZTF, learns variable-star structure
+with no labels, en route to LSST."*
 
-1. Connect to the Vibe Board exactly as you will on the day. Note
-   the actual viewport size, latency to GitHub Pages, and any
-   keyboard / clicker oddities.
-2. Run the full 10-min on the Board. Things that look fine on a
-   laptop can be illegible at 8 ft viewing distance — you may want
-   to tweak fonts or zoom.
-3. Try the demo with bad-network simulation (Chrome DevTools → Slow
-   3G) to know what happens if the venue WiFi is flaky. Have the
-   local fallback ready.
-4. Test all keyboard shortcuts on your actual presentation laptop's
-   keyboard. The `?` key in particular requires Shift on US English.
+### 6. First 5-min run-through — for *flow*, not timing (~25 min)
 
-### Day 14 — fresh and minimal
+Run the full 5-min script with the live demo. Don't watch the clock.
+Just get the click-and-talk pattern smooth.
+**Done when:** you can do the whole walkthrough without backtracking
+or saying "wait, hold on." Expect this first pass to take 6–8 min.
 
-1. Don't over-rehearse the morning of. Run the 30-sec pitch twice,
-   skim the Q&A bank once, walk away.
-2. Do open the live URL once to confirm it's serving. If GitHub
-   Pages is down, switch to the local `python3 -m http.server` copy
-   ahead of time.
-3. Bookmark the PR/issue/manuscript URL you'll point people to for
-   follow-up. Be ready to give *one* concrete next step for anyone
-   who's interested.
+### 7. Second 5-min run-through — *timed*, identify long beats (~25 min)
 
-### Crutches that help
+Phone stopwatch. Run the full script again. Note which beats ran
+long. Almost certainly: the periodogram (4:00 in the 10-min) and the
+architecture diagram are pretty and easy to over-narrate. The Layer
+toggle / probe-meter beat is the *climax* — protect its time.
+**Done when:** you've cut at least one minute of script and can land
+the 5-min run-through within 30 s of 5:00.
 
-- **A rolling timer.** Keep a phone with a stopwatch visible during
-  practice. After day 5 you should know "this is the 90-second mark"
-  by the section you're on.
-- **A clicker (or `↓` on the keyboard).** Scrolling with a clicker
-  feels natural; clicking individual points needs a real mouse.
-- **A throat lozenge.** Demos rely on your voice; presentations cause
-  dry mouth.
-- **A backup window with the demo already loaded.** If your live
-  browser dies, you have a second one ready.
-- **A canned source.** Pre-load the URL with `#7` (an RR Lyrae) so
-  the demo opens with a sensible initial selection if you arrive at
-  the podium under time pressure.
+### 8. Run the 5-min for one trusted listener and capture their hard
+   questions (~45 min)
+
+Find one person — a labmate, a partner, a friend who'll tell you the
+truth. Do the 5-min live, *out loud*, with their full attention. Tell
+them up front: "interrupt me with questions whenever something
+isn't clear."
+**Done when:** you've completed the run and *written down* the three
+questions that threw you. Add them to the Q&A bank if they aren't
+already there.
+
+### 9. Pre-script the top 3 hard questions into the Q&A bank (~30 min)
+
+For each of the three questions from step 8: write a 2–3 sentence
+answer into the Q&A section of `PRESENTATION.md`. Read your written
+answer out loud. If it sounds clunky, rewrite. The most common
+clunk: too much hedging ("well, it kind of depends...") — instead
+state your answer first, then qualify.
+**Done when:** all three answers can be delivered out loud in under
+30 s each without reading them.
+
+### 10. 10-min walkthrough for an astronomer-shaped audience (~45 min)
+
+Run the 10-min script with emphasis on the astrophysics:
+- Spend extra time on the HR diagram (instability strip, horizontal
+  branch).
+- Walk through the Period–Luminosity panel slowly — point at the
+  Cepheid locus and the RRL horizontal branch.
+- Discuss the period-recovery issues (catalog vs LS peak, EB
+  half-period aliases).
+- Less time on the contrastive loss math.
+**Done when:** you can do the run without notes and the timing lands
+within 30 s of 10:00.
+
+### 11. 10-min walkthrough for an ML/tech audience (~45 min)
+
+Same script, different emphasis:
+- Open the architecture popup early. Talk through the disentangled
+  heads.
+- Spend time on the **Layer dropdown + accuracy meter** — that's the
+  ML-audience climax. Click each Layer in the architecture mini, watch
+  the meter rise to 51.3% at Layer 6 and *drop* to 47.9% at z_sig.
+  Connect this to "linear-probe mismatch with the projection head"
+  in CLIP/DINO.
+- Discuss the InfoNCE loss, augmentations, batch size.
+- Less time on individual sources.
+**Done when:** you can do the run without notes; the head-vs-encoder
+moment lands cleanly.
+
+### 12. Read the Q&A bank out loud, every entry (~30 min)
+
+Some answers read well in writing and clunk out loud. Read each Q&A
+entry aloud once. The ones that feel awkward — rewrite them.
+**Done when:** every Q&A answer can be delivered without you wincing
+at the phrasing.
+
+### 13. Dress rehearsal on the actual Vibe Board (~60 min)
+
+This is the most-skipped step and the one that pays the most. Connect
+to the Vibe Board exactly as you will on the day.
+- Confirm the three-column layout actually appears (left panels show
+  at viewport ≥ 1400 px).
+- Step back 8 feet from the screen and look at the demo. If anything
+  is illegible at that distance, zoom in (Cmd/Ctrl-+) until it isn't.
+  Note the zoom level you settle on.
+- Run the full 10-min on the Board. Time it; it'll feel different
+  than on a laptop.
+- Tap each keyboard shortcut on the *actual presentation laptop's
+  keyboard* — `?` needs Shift on US English; some clickers steal the
+  arrow keys.
+**Done when:** the demo looks legible from the back of the room, and
+you've done one full 10-min run on the Board without surprises.
+
+### 14. Failure-mode rehearsal (~20 min)
+
+Open Chrome DevTools → Network → throttling → Slow 3G. Reload the
+demo. Click around. Things that take 200 ms on fast WiFi take 5–10 s
+on Slow 3G — note the panels that visibly stutter or take long to
+load (LC shards are the slowest, ~10 MB each).
+
+Have a fallback ready:
+- Local copy at `http://localhost:8765/` (run `python3 -m http.server
+  8765` from the demo directory).
+- The pre-overhaul fallback dir at
+  `~/projects/ztf-embedding-demo.fallback-2026-04-28/` if even local
+  is broken.
+
+**Done when:** you know which features degrade gracefully and which
+don't, and you have a rehearsed line for each ("the LC will load in
+a moment — let me click into the HR diagram while we wait").
+
+### 15. Day-of warmup (≤ 15 min, *not* more)
+
+The morning of the talk, do *less* not more.
+1. Run the 30-second pitch twice. No more.
+2. Skim the Q&A bank once. Don't drill.
+3. Open the live URL to confirm it's serving (look for a 200 in
+   browser DevTools).
+4. Bookmark or copy *one* concrete follow-up link (the
+   ztf-ssl-transformer GitHub URL or your manuscript draft) so you
+   can hand it to anyone who asks "where can I read more?"
+5. Walk away from the laptop. Drink water. Don't rehearse again.
+
+**Done when:** the demo is up, you have one follow-up link in hand,
+and you're not visibly rehearsing.
+
+---
+
+### Crutches that help (use during practice and the talk)
+
+- **A rolling timer.** Phone with a stopwatch visible during practice.
+  By the time you've done step 7 twice you should be able to feel
+  "this is the 90-second mark" by which beat you're on.
+- **A clicker (or `↓` on the keyboard).** Scrolling needs a clicker;
+  clicking specific points needs a real mouse — bring one.
+- **A throat lozenge.** Demos rely on your voice and venue lights
+  cause dry mouth.
+- **A backup browser window with the demo already loaded.** If your
+  primary tab dies you can pivot in seconds.
+- **A canned source.** Open the demo with `…demo/#7` so it lands on
+  an RR Lyrae and the right column is already populated when you
+  start speaking.
 
 ### What to avoid
 
-- Reading from the script during the talk. You'll lose eye contact
-  and sound robotic. The script is a scaffold — practice until you
-  can ad-lib around it.
-- Promising the SSL representation is "better than classical." It
-  isn't, yet (probe results are honest in the Q&A). Frame it as
-  "different and more general"; you'll lose credibility if you
-  oversell.
-- Live-debugging on stage. If a feature looks broken, name it briefly
-  ("…that side panel doesn't always render the contours, ignore
-  it…") and move on. Audiences forgive issues; they don't forgive
-  derailments.
-- The first 5 seconds of silence while you find your spot. Open with
-  the lightning pitch *while* the demo loads — start strong.
+- **Reading from the script during the talk.** You'll lose eye
+  contact and sound robotic. The script is a scaffold — practice
+  until you can ad-lib around it.
+- **Promising the SSL representation is "better than classical."** It
+  isn't, yet — the probe results in the Q&A bank are honest about
+  this. Frame it as "different and more general"; you lose
+  credibility if you oversell.
+- **Live-debugging on stage.** If a feature looks broken, name it
+  briefly ("…that contour overlay doesn't always render, ignore it…")
+  and move on. Audiences forgive issues; they don't forgive derailments.
+- **5 seconds of silence at the start.** Open with the lightning
+  pitch *while* the demo loads — start strong, don't wait for
+  Plotly to finish drawing.
 
 ## Backup talking points (if something breaks)
 
