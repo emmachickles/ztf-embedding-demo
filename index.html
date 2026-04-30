@@ -2186,7 +2186,17 @@ function renderLC(src, lc) {
   lcDiv.innerHTML = "";
   try {
     Plotly.newPlot(lcDiv, traces, layout, {responsive: true, displayModeBar: false});
-    note.textContent = `${totalEpochs} epochs · ${isFolded ? "folded on " + (src.period ? src.period.toFixed(4) + " d" : "?") : "raw"}`;
+    // Surface per-filter medians so the user can read the absolute flux
+    // scale that the y=0 line represents (since the y-axis is now
+    // flux − median, the median itself is implicit otherwise).
+    const medParts = [];
+    for (const fl of ["g", "r", "i"]) {
+      if (lc[`median_${fl}`] != null) {
+        medParts.push(`${fl}=${Math.round(lc[`median_${fl}`])}`);
+      }
+    }
+    const medStr = medParts.length ? `· median ${medParts.join(", ")} counts` : "";
+    note.textContent = `${totalEpochs} epochs · ${isFolded ? "folded on " + (src.period ? src.period.toFixed(4) + " d" : "?") : "raw"} ${medStr}`;
   } catch (e) {
     console.error("Plotly newPlot failed", e);
     setStatus("Plot rendering failed (see console)");
