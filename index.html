@@ -253,8 +253,8 @@
       <div class="panel-title"><span>Class distribution &amp; per-class F1</span></div>
       <div id="class-dist-plot" class="panel-plot"></div>
     </div>
-    <div class="panel collapsed" data-name="Fourier time encoding">
-      <div class="panel-title"><span>Learned Fourier frequencies</span></div>
+    <div class="panel collapsed" data-name="Δt attention bias">
+      <div class="panel-title"><span>Learned Δt-bias frequencies</span></div>
       <div id="fourier-plot" class="panel-plot"></div>
       <div class="legend-note" id="fourier-note"></div>
     </div>
@@ -1330,8 +1330,9 @@ function drawFourierFreqs() {
   const maxMove = moves.reduce((a, b) => Math.max(a, b), 0);
   const meanMove = moves.reduce((a, b) => a + b, 0) / moves.length;
   if (note) {
+    const k = learned.length;
     note.textContent =
-      `64 sin/cos pairs · max Δf after training: ${maxMove.toFixed(3)} cycles/d · mean Δf: ${meanMove.toFixed(4)}`;
+      `${k} sin/cos pairs over Δt · max Δf after training: ${maxMove.toFixed(3)} cycles/d · mean Δf: ${meanMove.toFixed(4)}`;
   }
 }
 
