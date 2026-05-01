@@ -1867,7 +1867,13 @@ function renderScatter(colorBy) {
   div.removeAllListeners && div.removeAllListeners("plotly_click");
   div.on("plotly_click", data => {
     try {
-      const pt = data.points[0];
+      // Skip clicks that resolve to overlay traces (selected-source X
+      // marker or kNN highlight) — those have stale customdata pointing
+      // to the previously-clicked source, which would make every click
+      // re-show that same source.
+      const pt = (data.points || []).find(p =>
+        !p.fullData || !_isOverlayTrace(p.fullData)
+      ) || data.points[0];
       if (pt && pt.customdata != null) showSource(pt.customdata);
     } catch (e) {
       console.error("plotly_click handler crashed", e);
@@ -2050,7 +2056,11 @@ function scatterMarkerTrace(src) {
     name: SCATTER_MARKER_TAG,
     marker: { size: 18, color: color, symbol: "x",
               line: { color: "#fff", width: 2.5 } },
-    hovertemplate: `selected · ${src.var_type} #${src.idx}<extra></extra>`,
+    // hoverinfo skip + no hovertemplate so the SVG-on-top X marker
+    // does not intercept clicks/hover on the underlying scattergl
+    // points. (The marker is purely visual; click resolution should
+    // always go to the actual data point.)
+    hoverinfo: "skip",
     showlegend: false,
   };
 }
