@@ -465,7 +465,8 @@
       <div class="arch-arrow">↓</div>
       <div class="arch-box arch-embed">
         Per-epoch embedding<br>
-        <span class="arch-sub">(flux, flux_err) → 256-d</span>
+        <span class="arch-sub">linear(flux, flux_err) + Fourier(t − t<sub>0</sub>) → 256-d</span><br>
+        <span class="arch-sub">64 learnable input-time frequencies, log-spaced 1.4 min ↔ 2.7 yr</span>
       </div>
       <div class="arch-arrow">↓</div>
       <div class="arch-box arch-trans">
@@ -1142,12 +1143,16 @@ function drawArchMini() {
       <div class="arch-mini-box arch-mini-input">Input · (t, flux, σ)<br>
         <span class="arch-mini-sub">irregular epochs · multi-band</span></div>
       <div class="arch-mini-arrow">↓</div>
-      <div class="arch-mini-box arch-mini-embed">Fourier embedding → 256-d</div>
+      <div class="arch-mini-box arch-mini-embed">Embed · 256-d<br>
+        <span class="arch-mini-sub">linear(flux, σ) + Fourier(t − t<sub>0</sub>)</span></div>
       <div class="arch-mini-arrow">↓</div>
       <div class="arch-mini-stack" id="arch-mini-stack">
         ${[1,2,3,4,5,6].map(i =>
           `<div class="arch-mini-box arch-mini-trans" data-layer="${i}">Layer ${i}</div>`
         ).join("")}
+      </div>
+      <div class="arch-mini-sub" style="text-align: center; margin-top: -2px;">
+        each attention adds <em>B</em>(Δt)
       </div>
       <div class="arch-mini-arrow">↓</div>
       <div class="arch-mini-box arch-mini-pool">Masked-mean pool · 256-d</div>
