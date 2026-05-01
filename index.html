@@ -260,7 +260,7 @@
         <option value="default">Default (z_sig)</option>
       </select>
       <label>Color by:</label>
-      <select id="color-select">
+      <select id="color-select" title="LS / BLS groups are classical periodogram statistics — surveyed in Maggie Sun's UROP analysis as candidate features.">
         <option value="var_type">Variability type</option>
         <option value="period">Period</option>
         <option value="rmag">r magnitude</option>
@@ -270,6 +270,20 @@
         <option value="ruwe">Gaia RUWE</option>
         <option value="pmra">pm RA</option>
         <option value="pmdec">pm Dec</option>
+        <optgroup label="Lomb-Scargle (Sun UROP)">
+          <option value="ls_sig_half">LS sig at P/2 (alias)</option>
+          <option value="ls_sig_2x">LS sig at 2P (EB diag)</option>
+          <option value="ls_mad">LS MAD</option>
+          <option value="ls_var">LS variance</option>
+          <option value="ls_skew">LS skew</option>
+          <option value="ls_kurt">LS kurtosis</option>
+        </optgroup>
+        <optgroup label="Box-Least-Squares">
+          <option value="bls_power">BLS power</option>
+          <option value="bls_snr">BLS SNR</option>
+          <option value="bls_depth">BLS depth</option>
+          <option value="bls_ntr">BLS n transits</option>
+        </optgroup>
       </select>
       <input type="text" id="search-input" placeholder="RA Dec (deg)" title="Type RA Dec in decimal degrees, e.g. 276.85 25.13">
       <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
@@ -1612,28 +1626,78 @@ function renderScatter(colorBy) {
       };
     });
   } else {
-    const vals = points.map(p => p[colorBy]);
     const labelText = {
       period: "Period (d)", rmag: "r mag", z_qual: "z_qual",
       bp_rp: "BP–RP", abs_g: "Abs G",
       ruwe: "RUWE", pmra: "pm RA (mas/yr)", pmdec: "pm Dec (mas/yr)",
+      ls_sig_half: "log₁₀ LS sig(P/2)", ls_sig_2x: "log₁₀ LS sig(2P)",
+      ls_mad: "log₁₀ LS MAD", ls_var: "log₁₀ LS variance",
+      ls_skew: "LS skew", ls_kurt: "LS kurtosis",
+      bls_power: "log₁₀ BLS power", bls_snr: "BLS SNR",
+      bls_depth: "log₁₀ BLS depth", bls_ntr: "log₁₀ BLS n transits",
     }[colorBy];
-    const cscale = colorBy === "rmag" || colorBy === "abs_g" ? "Viridis" : "Plasma";
-    const xy = points.map(p => viewXY(p, currentView));
-    traces = [{
-      x: xy.map(v => v[0]), y: xy.map(v => v[1]),
-      customdata: points.map(p => p.idx),
+    // Log-scaled fields: significance/power/depth/MAD/variance/N span many orders.
+    const logFields = new Set([
+      "ls_sig_half", "ls_sig_2x", "ls_mad", "ls_var",
+      "bls_power", "bls_depth", "bls_ntr",
+    ]);
+    // Diverging fields: skew and BLS SNR are signed — RdBu makes 0 clear.
+    const divergingFields = new Set(["ls_skew", "bls_snr"]);
+    const useLog = logFields.has(colorBy);
+    const useDiverging = divergingFields.has(colorBy);
+
+    const rawVals = points.map(p => p[colorBy]);
+    const vals = rawVals.map(v => {
+      if (v == null || !Number.isFinite(v)) return null;
+      if (useLog) return v > 0 ? Math.log10(v) : null;  // log of non-positive → null
+      return v;
+    });
+
+    // Missing-value points get a dim gray trace so the visible distribution
+    // reflects only sources where the metric is defined (helpful for BLS,
+    // where ~half the catalog has no transit-shaped fit).
+    const missingMask = vals.map(v => v == null);
+    const presentMask = vals.map(v => v != null);
+    const xyAll = points.map(p => viewXY(p, currentView));
+
+    const presentPts = points.filter((_, i) => presentMask[i]);
+    const presentXY  = xyAll.filter((_, i) => presentMask[i]);
+    const presentVals = vals.filter(v => v != null);
+    const missingPts = points.filter((_, i) => missingMask[i]);
+    const missingXY  = xyAll.filter((_, i) => missingMask[i]);
+
+    const cscale = useDiverging ? "RdBu"
+                  : (colorBy === "rmag" || colorBy === "abs_g") ? "Viridis"
+                  : "Plasma";
+    const cmid = useDiverging ? 0 : undefined;
+
+    traces = [];
+    if (missingPts.length) {
+      traces.push({
+        x: missingXY.map(v => v[0]), y: missingXY.map(v => v[1]),
+        customdata: missingPts.map(p => p.idx),
+        mode: "markers", type: "scattergl",
+        name: `no value (${missingPts.length.toLocaleString()})`,
+        marker: { size: 2, color: "#3a3f4a", opacity: 0.35 },
+        hovertemplate: `${labelText}=—<extra></extra>`,
+        showlegend: false,
+      });
+    }
+    traces.push({
+      x: presentXY.map(v => v[0]), y: presentXY.map(v => v[1]),
+      customdata: presentPts.map(p => p.idx),
       mode: "markers", type: "scattergl",
       marker: {
         size: 3, opacity: 0.55,
-        color: vals,
+        color: presentVals,
         colorscale: cscale,
+        cmid: cmid,
         colorbar: { title: labelText, thickness: 12, len: 0.55,
                     tickfont: {color: "#8b949e"}, titlefont: {color: "#c9d1d9"} },
         reversescale: colorBy === "rmag" || colorBy === "abs_g",
       },
       hovertemplate: `${labelText}=%{marker.color:.4f}<extra></extra>`,
-    }];
+    });
   }
 
   // Galaxy view: prepend a low-contrast Milky-Way density backdrop so
@@ -2042,7 +2106,9 @@ async function showSource(idx) {
     <div class="info-row"><span class="info-label">BP–RP / abs G</span><span class="info-value">${src.bp_rp ?? "—"} / ${src.abs_g ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">RUWE</span><span class="info-value">${src.ruwe ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">pm (mas/yr)</span><span class="info-value">${src.pmra != null ? src.pmra.toFixed(2) : "—"}, ${src.pmdec != null ? src.pmdec.toFixed(2) : "—"}</span></div>
-    <div class="info-row"><span class="info-label">LS sig</span><span class="info-value">${src.ls_sig ?? "—"}</span></div>
+    <div class="info-row"><span class="info-label">LS sig (P, P/2, 2P)</span><span class="info-value">${src.ls_sig ?? "—"} / ${src.ls_sig_half ?? "—"} / ${src.ls_sig_2x ?? "—"}</span></div>
+    <div class="info-row" title="Sun-UROP LS shape stats: median absolute deviation, variance, skew, kurtosis."><span class="info-label">LS MAD / var / sk / k</span><span class="info-value">${src.ls_mad ?? "—"} / ${src.ls_var ?? "—"} / ${src.ls_skew ?? "—"} / ${src.ls_kurt ?? "—"}</span></div>
+    <div class="info-row" title="BLS = Box-Least-Squares (transit search). Null if no transit-shaped fit at this position."><span class="info-label">BLS pwr / SNR / depth / N</span><span class="info-value">${src.bls_power ?? "—"} / ${src.bls_snr ?? "—"} / ${src.bls_depth ?? "—"} / ${src.bls_ntr ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual ?? "—"}</span></div>
     ${renderKnnList(src)}
   `;
