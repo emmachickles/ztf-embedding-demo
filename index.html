@@ -306,6 +306,7 @@
       <button id="random-btn" title="Show a random source">🎲 Random</button>
       <button id="bio-btn" title="Show one-line descriptions of the variability classes">Class info</button>
       <button id="arch-btn" title="Show the SSL transformer architecture">Model</button>
+      <button id="period-anim-btn" title="Animation: how irregular ZTF observations build a clean light curve when phase-folded on the right period">Why phase fold?</button>
       <button id="cm-btn" title="Linear-probe confusion matrix — click any cell to see those sources">Confusion</button>
       <button id="left-panels-btn" title="Show or hide the left-side dashboard panels (auto-shown ≥ 1400 px viewport)">⊞ Panels</button>
       <button id="presets-btn" title="Jump to a canonical example of each variability class — useful for a guided demo">⭐ Examples</button>
@@ -507,6 +508,35 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="period-anim-modal">
+  <div class="modal" style="max-width: 980px;">
+    <span class="modal-close" id="period-anim-close">&times;</span>
+    <h2>Why we phase fold</h2>
+    <p style="font-size: 13px; color: #8b949e; margin-bottom: 6px;">
+      ZTF visits the same patch of sky at irregular times — every few nights, gaps
+      in bad weather, blocked by the Sun for months. Watching the data accumulate
+      in <strong>real time</strong> (left) it looks like noise. Folding each
+      observation onto the same period (right) reveals the periodic light curve
+      hiding underneath.
+    </p>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+      <div id="period-anim-raw" style="height: 320px; background: #0d1117; border: 1px solid #21262d; border-radius: 4px;"></div>
+      <div id="period-anim-fold" style="height: 320px; background: #0d1117; border: 1px solid #21262d; border-radius: 4px;"></div>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center; margin-top: 10px;">
+      <button id="period-anim-play" class="panel-btn"
+              style="border: 1px solid #30363d; padding: 4px 12px; font-size: 12px; cursor: pointer;">▶ Play</button>
+      <button id="period-anim-restart" class="panel-btn"
+              style="border: 1px solid #30363d; padding: 4px 12px; font-size: 12px; cursor: pointer;">↻ Restart</button>
+      <span id="period-anim-status" style="font-size: 12px; color: #6e7681;"></span>
+    </div>
+    <p class="arch-caption" style="margin-top: 8px;">
+      Example: an RR Lyrae pulsator — surface oscillates with P = 0.539 d, 196 ZTF observations
+      spanning ~3 yr. Same physical brightness sequence, two ways of looking at it.
+    </p>
+  </div>
+</div>
+
 <script>
 // ── Color palette for var_types (Plotly D3 qualitative ordering) ──
 const VAR_TYPE_COLORS = {
@@ -562,6 +592,18 @@ let hrIsolinesOn = false;
 let probePredictions = null;  // {classes, predictions: [{idx, true, pred_logr, ...}]}
 let perLayerProbe = null;     // {names, balanced_accuracy, n_classes, n_sources}
 let fourierFreqs = null;      // {learned_freqs, init_freqs, min/max_period_days}
+
+// Phase-fold period selection. points.json carries `period` (Chen2020),
+// `ls_period`, `bls_period`, and a precomputed `fold_period` chosen by
+// the enrich_with_periods.py script: LS or BLS if within 5% of Chen,
+// else Chen. activePeriod() returns that, falling back to `period`
+// for sources/neighbors loaded before the enrichment ran.
+function activePeriod(p) {
+  if (p == null) return undefined;
+  if (Number.isFinite(p.fold_period) && p.fold_period > 0) return p.fold_period;
+  if (Number.isFinite(p.period) && p.period > 0) return p.period;
+  return undefined;
+}
 
 async function init() {
   const [pts, mf, hr, kn, pl, hrcd, prb, plp, ff] = await Promise.all([
@@ -942,6 +984,17 @@ async function init() {
       document.getElementById("arch-modal").classList.remove("open");
     }
   });
+  // "Why phase fold?" period-animation modal
+  document.getElementById("period-anim-btn").addEventListener("click", openPeriodAnimModal);
+  document.getElementById("period-anim-close").addEventListener("click", closePeriodAnimModal);
+  document.getElementById("period-anim-modal").addEventListener("click", e => {
+    if (e.target.id === "period-anim-modal") closePeriodAnimModal();
+  });
+  document.getElementById("period-anim-play").addEventListener("click", () => {
+    if (periodAnimState.running) pausePeriodAnim();
+    else playPeriodAnim();
+  });
+  document.getElementById("period-anim-restart").addEventListener("click", restartPeriodAnim);
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       document.querySelectorAll(".modal-backdrop.open")
@@ -2174,6 +2227,167 @@ function shadeHex(hex, amt) {
 }
 let lcView = "folded";  // toggled by radio buttons
 
+// ── "Why phase fold?" animation modal ──────────────────────────
+// Hand-picked clean RR Lyrae from the 25K subset: P=0.5387 d, 196 epochs,
+// ls_sig=265. Single source means the animation is reproducible and
+// pre-tuned to be pedagogically clear.
+const PERIOD_ANIM_IDX = 6982;
+// Distinct band colors so the audience can read g vs r vs i at a glance,
+// independent of the source's class color used elsewhere.
+const PERIOD_ANIM_BAND = {
+  g: { name: "g (green)", color: "#56d364" },
+  r: { name: "r (red)",   color: "#ff7b72" },
+  i: { name: "i (NIR)",   color: "#a371f7" },
+};
+const periodAnimState = { src: null, lc: null, events: [], index: 0,
+                          running: false, timer: null };
+
+async function openPeriodAnimModal() {
+  document.getElementById("period-anim-modal").classList.add("open");
+  if (!periodAnimState.src) await initPeriodAnim();
+  // Plotly inside hidden divs sizes to 0 on first render; let layout settle.
+  setTimeout(() => {
+    Plotly.Plots.resize(document.getElementById("period-anim-raw"));
+    Plotly.Plots.resize(document.getElementById("period-anim-fold"));
+    if (periodAnimState.events.length && periodAnimState.index === 0) {
+      setTimeout(playPeriodAnim, 300);
+    }
+  }, 100);
+}
+
+function closePeriodAnimModal() {
+  pausePeriodAnim();
+  document.getElementById("period-anim-modal").classList.remove("open");
+}
+
+async function initPeriodAnim() {
+  const src = pointsByIdx ? pointsByIdx.get(PERIOD_ANIM_IDX)
+                          : points.find(p => p.idx === PERIOD_ANIM_IDX);
+  if (!src) { console.error("period anim source missing"); return; }
+  const shardIdx = Math.floor(PERIOD_ANIM_IDX / (manifest.raw_shard_size || 500));
+  let shard;
+  try { shard = await loadShard(shardIdx); }
+  catch (e) { console.error("period anim shard load failed", e); return; }
+  const lc = shard[String(PERIOD_ANIM_IDX)];
+  if (!lc) { console.error("period anim LC missing in shard"); return; }
+  // Flatten + sort all observations chronologically across bands
+  const events = [];
+  for (const fl of ["g", "r", "i"]) {
+    if (!lc[fl] || !lc[fl].t || !lc[fl].t.length) continue;
+    for (let i = 0; i < lc[fl].t.length; i++) {
+      events.push({ t: lc[fl].t[i], f: lc[fl].f[i], band: fl });
+    }
+  }
+  events.sort((a, b) => a.t - b.t);
+  periodAnimState.src = src;
+  periodAnimState.lc = lc;
+  periodAnimState.events = events;
+  periodAnimState.index = 0;
+  drawEmptyPeriodAnim();
+}
+
+function drawEmptyPeriodAnim() {
+  const { src, lc, events } = periodAnimState;
+  if (!src || !lc) return;
+  const period = activePeriod(src) || src.period;
+  // Compute axis ranges from the full LC so the frame doesn't jump
+  let tmin = Infinity, tmax = -Infinity, fmin = Infinity, fmax = -Infinity;
+  for (const fl of ["g", "r", "i"]) {
+    if (!lc[fl]) continue;
+    for (const t of lc[fl].t) { if (t < tmin) tmin = t; if (t > tmax) tmax = t; }
+    for (const f of lc[fl].f) { if (f < fmin) fmin = f; if (f > fmax) fmax = f; }
+  }
+  const fpad = (fmax - fmin) * 0.1;
+  const bands = Object.keys(PERIOD_ANIM_BAND).filter(fl => lc[fl] && lc[fl].t.length);
+  const empty = () => bands.map(fl => ({
+    x: [], y: [],
+    mode: "markers", type: "scatter",
+    name: PERIOD_ANIM_BAND[fl].name,
+    marker: { color: PERIOD_ANIM_BAND[fl].color, size: 6, opacity: 0.85,
+              line: { color: "#0d1117", width: 0.5 } },
+  }));
+  const layoutBase = {
+    paper_bgcolor: "#0d1117", plot_bgcolor: "#161b22",
+    margin: { l: 50, r: 12, t: 30, b: 40 },
+    yaxis: { title: "flux (relative)", color: "#8b949e", gridcolor: "#21262d",
+             range: [fmin - fpad, fmax + fpad] },
+    legend: { x: 1, xanchor: "right", y: 1.06, yanchor: "bottom", orientation: "h",
+              font: { color: "#c9d1d9", size: 10 }, bgcolor: "rgba(0,0,0,0)" },
+    showlegend: true,
+  };
+  Plotly.newPlot("period-anim-raw", empty(), {
+    ...layoutBase,
+    title: { text: "Time vs flux (chronological)",
+             font: { color: "#c9d1d9", size: 13 } },
+    xaxis: { title: "time (BJD − 2458000, days)", color: "#8b949e",
+             gridcolor: "#21262d", range: [tmin - 20, tmax + 20] },
+  }, { responsive: true, displayModeBar: false });
+  Plotly.newPlot("period-anim-fold", empty(), {
+    ...layoutBase,
+    title: { text: `Phase-folded on P = ${period.toFixed(4)} d`,
+             font: { color: "#c9d1d9", size: 13 } },
+    xaxis: { title: "phase (cycles since t₀)", color: "#8b949e",
+             gridcolor: "#21262d", range: [0, 1] },
+  }, { responsive: true, displayModeBar: false });
+  document.getElementById("period-anim-status").textContent =
+    `0 / ${events.length} observations`;
+  document.getElementById("period-anim-play").textContent = "▶ Play";
+}
+
+function playPeriodAnim() {
+  const s = periodAnimState;
+  if (!s.events || s.events.length === 0) return;
+  if (s.index >= s.events.length) { restartPeriodAnim(); return; }
+  s.running = true;
+  document.getElementById("period-anim-play").textContent = "❚❚ Pause";
+  const period = activePeriod(s.src) || s.src.period;
+  const tref = Number.isFinite(s.src.t0) ? s.src.t0 : s.events[0].t;
+  const bands = Object.keys(PERIOD_ANIM_BAND).filter(fl => s.lc[fl] && s.lc[fl].t.length);
+  const bandIdx = Object.fromEntries(bands.map((fl, i) => [fl, i]));
+  const PER_FRAME = 2;   // observations added per animation tick
+  const FRAME_MS = 40;   // 25 fps → ~50 obs/sec → ~4 sec for 196 obs
+  const tick = () => {
+    if (!s.running) return;
+    if (s.index >= s.events.length) {
+      s.running = false;
+      document.getElementById("period-anim-play").textContent = "↻ Replay";
+      return;
+    }
+    const raw = bands.map(() => ({ x: [], y: [] }));
+    const phs = bands.map(() => ({ x: [], y: [] }));
+    for (let k = 0; k < PER_FRAME && s.index < s.events.length; k++, s.index++) {
+      const e = s.events[s.index];
+      const ph = (((e.t - tref) % period) + period) % period / period;
+      const ti = bandIdx[e.band];
+      raw[ti].x.push(e.t); raw[ti].y.push(e.f);
+      phs[ti].x.push(ph);   phs[ti].y.push(e.f);
+    }
+    const indices = bands.map((_, i) => i);
+    Plotly.extendTraces("period-anim-raw",
+      { x: raw.map(o => o.x), y: raw.map(o => o.y) }, indices);
+    Plotly.extendTraces("period-anim-fold",
+      { x: phs.map(o => o.x), y: phs.map(o => o.y) }, indices);
+    document.getElementById("period-anim-status").textContent =
+      `${s.index} / ${s.events.length} observations`;
+    s.timer = setTimeout(tick, FRAME_MS);
+  };
+  tick();
+}
+
+function pausePeriodAnim() {
+  periodAnimState.running = false;
+  if (periodAnimState.timer) { clearTimeout(periodAnimState.timer); periodAnimState.timer = null; }
+  if (periodAnimState.events.length && periodAnimState.index < periodAnimState.events.length) {
+    document.getElementById("period-anim-play").textContent = "▶ Play";
+  }
+}
+
+function restartPeriodAnim() {
+  pausePeriodAnim();
+  drawEmptyPeriodAnim();
+  setTimeout(playPeriodAnim, 200);
+}
+
 async function loadShard(shardIdx) {
   if (lcCache.has(shardIdx)) return lcCache.get(shardIdx);
   const dir = manifest.raw_lightcurves_dir;
@@ -2207,7 +2421,21 @@ async function showSource(idx) {
       ${pinnedSource ? `<button id="unpin-btn" style="font-size: 11px; padding: 2px 8px; margin-left: 6px;">Unpin</button>` : ""}
     </div>
     <div class="info-row"><span class="info-label">Type</span><span class="info-value">${src.var_type}</span></div>
-    <div class="info-row"><span class="info-label">Period</span><span class="info-value">${src.period ? src.period.toFixed(6) + " d" : "—"}</span></div>
+    ${(() => {
+      const fmt = v => (Number.isFinite(v) && v > 0) ? v.toFixed(6) : "—";
+      const fs = src.fold_source || "chen";
+      const mark = which => fs === which
+        ? '<span style="color: #58a6ff;">●</span> '
+        : '<span style="color: #30363d;">○</span> ';
+      return `<div class="info-row" title="Phase fold uses ●; LS/BLS chosen if within 5% of Chen.">
+        <span class="info-label">Period (Chen / LS / BLS)</span>
+        <span class="info-value">
+          ${mark("chen")}${fmt(src.period)}
+          / ${mark("ls")}${fmt(src.ls_period)}
+          / ${mark("bls")}${fmt(src.bls_period)}
+        </span>
+      </div>`;
+    })()}
     <div class="info-row"><span class="info-label">RA, Dec</span><span class="info-value">${src.ra ?? "—"}, ${src.dec ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">r mag</span><span class="info-value">${src.rmag ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">BP–RP / abs G</span><span class="info-value">${src.bp_rp ?? "—"} / ${src.abs_g ?? "—"}</span></div>
@@ -2327,7 +2555,8 @@ async function renderKnnStrip(src) {
     wrap.style.display = "flex";
     wrap.style.flexDirection = "column";
     wrap.style.minHeight = "0";
-    wrap.title = `idx ${np.idx} · ${np.var_type} · P=${np.period?.toFixed?.(4) || "?"} d`;
+    const npPer = activePeriod(np);
+    wrap.title = `idx ${np.idx} · ${np.var_type} · P=${npPer ? npPer.toFixed(4) : "?"} d`;
     wrap.addEventListener("click", () => showSource(np.idx));
     const label = document.createElement("div");
     label.style.fontSize = "10px";
@@ -2340,7 +2569,7 @@ async function renderKnnStrip(src) {
     plotDiv.style.minHeight = "0";
     plotDiv.dataset.idx = np.idx;
     plotDiv.dataset.varType = np.var_type;
-    plotDiv.dataset.period = np.period || "";
+    plotDiv.dataset.period = activePeriod(np) || "";
     wrap.appendChild(plotDiv);
     return { wrap, plotDiv, np };
   });
@@ -2362,8 +2591,8 @@ async function renderKnnStrip(src) {
       return;
     }
     const lc = shard[String(np.idx)];
-    // Phase-fold using own period and t0 (or tmin fallback)
-    const period = np.period;
+    // Phase-fold using fold_period (LS/BLS-refined) or Chen period as fallback
+    const period = activePeriod(np);
     if (!period || period <= 0) {
       m.plotDiv.innerHTML = `<div class="placeholder" style="font-size:10px">no period</div>`;
       return;
@@ -2632,12 +2861,13 @@ function renderPeriodogram(src, lc) {
   }
 
   const shapes = [];
-  if (src.period && src.period > 0) {
+  const srcPer = activePeriod(src);
+  if (srcPer && srcPer > 0) {
     const classColor = VAR_TYPE_COLORS[src.var_type] || "#58a6ff";
-    // Catalog period — bold solid; 0.5× / 2× — dotted
-    [[src.period, classColor, "solid", 2.5],
-     [src.period * 2, classColor, "dot", 1],
-     [src.period / 2, classColor, "dot", 1]].forEach(([p, color, dash, w]) => {
+    // Active period (what we phase-fold on) — bold solid; 0.5× / 2× — dotted
+    [[srcPer, classColor, "solid", 2.5],
+     [srcPer * 2, classColor, "dot", 1],
+     [srcPer / 2, classColor, "dot", 1]].forEach(([p, color, dash, w]) => {
       if (p < pmin || p > pmax) return;
       shapes.push({
         type: "line", x0: p, x1: p, y0: 0, y1: 1, yref: "paper",
@@ -2645,7 +2875,7 @@ function renderPeriodogram(src, lc) {
       });
     });
     // Daily aliases: f_alias = f_true ± 1.0027 cycles/d (sidereal-day cadence)
-    const f0 = 1 / src.period;
+    const f0 = 1 / srcPer;
     [-1, +1].forEach(s => {
       const f_a = f0 + s * 1.0027;
       if (f_a <= 0) return;
@@ -2675,7 +2905,7 @@ function renderPeriodogram(src, lc) {
   div.innerHTML = "";
   try {
     Plotly.newPlot(div, traces, layout, { responsive: true, displayModeBar: false });
-    const cat = src.period;
+    const cat = activePeriod(src);
     let txt;
     if (cat && pBest != null) {
       const ratio = pBest / cat;
@@ -2720,8 +2950,9 @@ function buildLCTracesForSource(src, lc, alpha, sizeBoost, prefix) {
     if (lcView === "raw") {
       x = t.map(v => v - tmin);
     } else {
-      if (!src.period || src.period <= 0) continue;
-      x = t.map(v => (((v - tref_phase) % src.period) + src.period) % src.period / src.period);
+      const _per = activePeriod(src);
+      if (!_per || _per <= 0) continue;
+      x = t.map(v => (((v - tref_phase) % _per) + _per) % _per / _per);
     }
     const style = FILTER_STYLE[fl];
     const color = shadeHex(classColor, style.shade);
@@ -2801,7 +3032,10 @@ function renderLC(src, lc) {
       }
     }
     const medStr = medParts.length ? `· median ${medParts.join(", ")} counts` : "";
-    note.textContent = `${totalEpochs} epochs · ${isFolded ? "folded on " + (src.period ? src.period.toFixed(4) + " d" : "?") : "raw"} ${medStr}`;
+    const _activeP = activePeriod(src);
+    const _foldSrc = src.fold_source && src.fold_source !== "chen" && src.fold_source !== "none"
+      ? ` (${src.fold_source.toUpperCase()})` : "";
+    note.textContent = `${totalEpochs} epochs · ${isFolded ? "folded on " + (_activeP ? _activeP.toFixed(4) + " d" + _foldSrc : "?") : "raw"} ${medStr}`;
   } catch (e) {
     console.error("Plotly newPlot failed", e);
     setStatus("Plot rendering failed (see console)");
