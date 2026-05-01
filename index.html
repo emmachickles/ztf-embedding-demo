@@ -260,7 +260,7 @@
         <option value="default">Default (z_sig)</option>
       </select>
       <label>Color by:</label>
-      <select id="color-select" title="LS / BLS groups are classical periodogram statistics — surveyed in Maggie Sun's UROP analysis as candidate features.">
+      <select id="color-select" title="LS / BLS / light-curve-statistics groups are classical features surveyed in Maggie Sun's UROP analysis as candidates.">
         <option value="var_type">Variability type</option>
         <option value="period">Period</option>
         <option value="rmag">r magnitude</option>
@@ -273,10 +273,12 @@
         <optgroup label="Lomb-Scargle (Sun UROP)">
           <option value="ls_sig_half">LS sig at P/2 (alias)</option>
           <option value="ls_sig_2x">LS sig at 2P (EB diag)</option>
-          <option value="ls_mad">LS MAD</option>
-          <option value="ls_var">LS variance</option>
-          <option value="ls_skew">LS skew</option>
-          <option value="ls_kurt">LS kurtosis</option>
+        </optgroup>
+        <optgroup label="Light-curve statistics">
+          <option value="ls_mad">MAD</option>
+          <option value="ls_var">Variance</option>
+          <option value="ls_skew">Skew</option>
+          <option value="ls_kurt">Kurtosis</option>
         </optgroup>
         <optgroup label="Box-Least-Squares">
           <option value="bls_power">BLS power</option>
@@ -1631,8 +1633,8 @@ function renderScatter(colorBy) {
       bp_rp: "BP–RP", abs_g: "Abs G",
       ruwe: "RUWE", pmra: "pm RA (mas/yr)", pmdec: "pm Dec (mas/yr)",
       ls_sig_half: "log₁₀ LS sig(P/2)", ls_sig_2x: "log₁₀ LS sig(2P)",
-      ls_mad: "log₁₀ LS MAD", ls_var: "log₁₀ LS variance",
-      ls_skew: "LS skew", ls_kurt: "LS kurtosis",
+      ls_mad: "log₁₀ MAD", ls_var: "log₁₀ variance",
+      ls_skew: "Skew", ls_kurt: "Kurtosis",
       bls_power: "log₁₀ BLS power", bls_snr: "BLS SNR",
       bls_depth: "log₁₀ BLS depth", bls_ntr: "log₁₀ BLS n transits",
     }[colorBy];
@@ -2107,7 +2109,7 @@ async function showSource(idx) {
     <div class="info-row"><span class="info-label">RUWE</span><span class="info-value">${src.ruwe ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">pm (mas/yr)</span><span class="info-value">${src.pmra != null ? src.pmra.toFixed(2) : "—"}, ${src.pmdec != null ? src.pmdec.toFixed(2) : "—"}</span></div>
     <div class="info-row"><span class="info-label">LS sig (P, P/2, 2P)</span><span class="info-value">${src.ls_sig ?? "—"} / ${src.ls_sig_half ?? "—"} / ${src.ls_sig_2x ?? "—"}</span></div>
-    <div class="info-row" title="Sun-UROP LS shape stats: median absolute deviation, variance, skew, kurtosis."><span class="info-label">LS MAD / var / sk / k</span><span class="info-value">${src.ls_mad ?? "—"} / ${src.ls_var ?? "—"} / ${src.ls_skew ?? "—"} / ${src.ls_kurt ?? "—"}</span></div>
+    <div class="info-row" title="Per-source flux statistics from the LS catalog (not LS-derived): median absolute deviation, variance, skew, kurtosis."><span class="info-label">MAD / var / sk / kurt</span><span class="info-value">${src.ls_mad ?? "—"} / ${src.ls_var ?? "—"} / ${src.ls_skew ?? "—"} / ${src.ls_kurt ?? "—"}</span></div>
     <div class="info-row" title="BLS = Box-Least-Squares (transit search). Null if no transit-shaped fit at this position."><span class="info-label">BLS pwr / SNR / depth / N</span><span class="info-value">${src.bls_power ?? "—"} / ${src.bls_snr ?? "—"} / ${src.bls_depth ?? "—"} / ${src.bls_ntr ?? "—"}</span></div>
     <div class="info-row"><span class="info-label">z_qual</span><span class="info-value">${src.z_qual ?? "—"}</span></div>
     ${renderKnnList(src)}
