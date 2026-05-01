@@ -271,6 +271,7 @@
         <option value="pmra">pm RA</option>
         <option value="pmdec">pm Dec</option>
         <optgroup label="Lomb-Scargle">
+          <option value="ls_sig">LS sig at P</option>
           <option value="ls_sig_half">LS sig at P/2</option>
           <option value="ls_sig_2x">LS sig at 2P</option>
         </optgroup>
@@ -1632,7 +1633,7 @@ function renderScatter(colorBy) {
       period: "Period (d)", rmag: "r mag", z_qual: "z_qual",
       bp_rp: "BP–RP", abs_g: "Abs G",
       ruwe: "RUWE", pmra: "pm RA (mas/yr)", pmdec: "pm Dec (mas/yr)",
-      ls_sig_half: "log₁₀ LS sig(P/2)", ls_sig_2x: "log₁₀ LS sig(2P)",
+      ls_sig: "log₁₀ LS sig(P)", ls_sig_half: "log₁₀ LS sig(P/2)", ls_sig_2x: "log₁₀ LS sig(2P)",
       ls_mad: "log₁₀ MAD", ls_var: "log₁₀ variance",
       ls_skew: "Skew", ls_kurt: "Kurtosis",
       bls_power: "log₁₀ BLS power", bls_snr: "BLS SNR",
@@ -1640,7 +1641,7 @@ function renderScatter(colorBy) {
     }[colorBy];
     // Log-scaled fields: significance/power/depth/MAD/variance/N span many orders.
     const logFields = new Set([
-      "ls_sig_half", "ls_sig_2x", "ls_mad", "ls_var",
+      "ls_sig", "ls_sig_half", "ls_sig_2x", "ls_mad", "ls_var",
       "bls_power", "bls_depth", "bls_ntr",
     ]);
     // Diverging fields: skew and BLS SNR are signed — RdBu makes 0 clear.
