@@ -37,6 +37,18 @@
      users on narrower screens can still pop the left dashboard open. */
   body.force-left-panels .left-panels { width: 380px; padding: 12px; }
   body.hide-left-panels .left-panels  { width: 0;     padding: 0;     border-right: none; }
+  /* Drag-resize handles between panels — persists user width to localStorage. */
+  .resizer { width: 4px; background: #21262d; cursor: col-resize; flex-shrink: 0;
+             transition: background 0.15s ease; touch-action: none; }
+  .resizer:hover, .resizer.dragging { background: #58a6ff; }
+  /* Hide left resizer when the left panel is collapsed (mirrors panel visibility). */
+  body.hide-left-panels #resizer-left { display: none; }
+  @media (max-width: 1399px) {
+    body:not(.force-left-panels) #resizer-left { display: none; }
+  }
+  /* While dragging, kill transitions so width-tracking is snappy. */
+  body.cols-resizing .left-panels { transition: none !important; }
+  body.cols-resizing { cursor: col-resize; user-select: none; }
   .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
   .controls label { font-size: 12px; color: #8b949e; }
   .controls select { background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
@@ -247,6 +259,7 @@
       <div class="legend-note" id="fourier-note"></div>
     </div>
   </div>
+  <div class="resizer" id="resizer-left" title="Drag to resize left panels"></div>
   <div class="left">
     <div class="controls">
       <label>View:</label>
@@ -309,6 +322,7 @@
     </div>
     <div id="scatter"></div>
   </div>
+  <div class="resizer" id="resizer-right" title="Drag to resize source-info panel"></div>
   <div class="right">
     <div class="restore-bar" id="restore-bar"></div>
     <div class="info-card" id="info-card" data-name="Source info">
@@ -450,13 +464,14 @@
       </div>
       <div class="arch-arrow">↓</div>
       <div class="arch-box arch-embed">
-        Fourier time-series embedding<br>
-        <span class="arch-sub">flux + Fourier(time) → 256-d</span>
+        Per-epoch embedding<br>
+        <span class="arch-sub">(flux, flux_err) → 256-d</span>
       </div>
       <div class="arch-arrow">↓</div>
       <div class="arch-box arch-trans">
-        Transformer encoder<br>
-        <span class="arch-sub">6 layers · 8 heads · d<sub>ff</sub>=1024 · pre-norm</span>
+        Continuous-time transformer encoder<br>
+        <span class="arch-sub">6 layers · 8 heads · d<sub>ff</sub>=1024 · pre-norm</span><br>
+        <span class="arch-sub">each attention adds <em>B</em>(Δt) — a learned sum of K=16 sin/cos pairs over pairwise time gaps</span>
       </div>
       <div class="arch-arrow">↓</div>
       <div class="arch-box arch-pool">
@@ -481,8 +496,11 @@
     <p class="arch-caption">
       Pre-trained self-supervised on raw multi-band ZTF light curves with InfoNCE
       contrastive loss on <code>z_sig</code> and an auxiliary regression on
-      <code>z_qual</code> to encourage disentanglement.
-      Use the <em>Layer</em> dropdown above to UMAP each encoder layer's
+      <code>z_qual</code> to encourage disentanglement. Each contrastive pair
+      uses two disjoint random time-windows of the same source so the model
+      can't shortcut the objective by matching cadence. The 25K Chen sources
+      used to compute the probe accuracy below are held out from the training
+      pool. Use the <em>Layer</em> dropdown above to UMAP each encoder layer's
       pooled output and see when class structure emerges.
     </p>
   </div>
@@ -684,6 +702,83 @@ async function init() {
     }
   });
 
+  // ── Drag-resize handles for the left and right panels ────────────
+  // Inline style overrides the media-query / class-driven widths. The
+  // chosen widths persist to localStorage so they survive reload.
+  const RESIZE_KEYS = { left: "ztf-demo-w-left", right: "ztf-demo-w-right" };
+  const RESIZE_BOUNDS = {
+    left:  { min: 240, max: 720 },   // .left-panels
+    right: { min: 280, max: 720 },   // .right
+  };
+  const leftPanels = document.getElementById("left-panels");
+  const rightPanel = document.querySelector(".right");
+  // Apply any saved widths on load
+  try {
+    const wl = parseInt(localStorage.getItem(RESIZE_KEYS.left), 10);
+    if (Number.isFinite(wl)) leftPanels.style.width = wl + "px";
+    const wr = parseInt(localStorage.getItem(RESIZE_KEYS.right), 10);
+    if (Number.isFinite(wr)) rightPanel.style.width = wr + "px";
+  } catch (e) {}
+
+  function startResize(handleEl, target, side) {
+    handleEl.addEventListener("mousedown", down);
+    handleEl.addEventListener("touchstart", e => {
+      if (e.touches && e.touches.length) down({ clientX: e.touches[0].clientX, preventDefault: () => e.preventDefault() });
+    }, { passive: false });
+
+    function down(e) {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = target.getBoundingClientRect().width;
+      const { min, max } = RESIZE_BOUNDS[side];
+      handleEl.classList.add("dragging");
+      document.body.classList.add("cols-resizing");
+
+      const move = ev => {
+        const x = ev.touches ? ev.touches[0].clientX : ev.clientX;
+        // For .right (on the right edge), dragging LEFT enlarges it; flip sign.
+        const dx = side === "right" ? (startX - x) : (x - startX);
+        const w = Math.max(min, Math.min(max, startW + dx));
+        target.style.width = w + "px";
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.removeEventListener("touchmove", moveTouch);
+        document.removeEventListener("touchend", up);
+        handleEl.classList.remove("dragging");
+        document.body.classList.remove("cols-resizing");
+        try {
+          localStorage.setItem(RESIZE_KEYS[side],
+            String(Math.round(target.getBoundingClientRect().width)));
+        } catch (e) {}
+        // Let Plotly reflow into the new column widths
+        window.dispatchEvent(new Event("resize"));
+      };
+      const moveTouch = ev => {
+        if (ev.touches && ev.touches.length) move({ touches: ev.touches });
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+      document.addEventListener("touchmove", moveTouch, { passive: false });
+      document.addEventListener("touchend", up);
+    }
+  }
+  startResize(document.getElementById("resizer-left"),  leftPanels, "left");
+  startResize(document.getElementById("resizer-right"), rightPanel, "right");
+
+  // Double-click a handle to reset that panel to its default width
+  document.getElementById("resizer-left").addEventListener("dblclick", () => {
+    leftPanels.style.width = "";
+    try { localStorage.removeItem(RESIZE_KEYS.left); } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  });
+  document.getElementById("resizer-right").addEventListener("dblclick", () => {
+    rightPanel.style.width = "";
+    try { localStorage.removeItem(RESIZE_KEYS.right); } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  });
+
   // Left-panels toggle (overrides the media query). State persists in
   // localStorage so it survives reload.
   const LP_KEY = "ztf-demo-left-panels";
@@ -713,6 +808,9 @@ async function init() {
       // Narrow screen — auto = hidden. Cycle: auto → force → auto.
       next = cur === "force" ? "auto" : "force";
     }
+    // Drop any user-dragged inline width so the body class can take over.
+    leftPanels.style.width = "";
+    try { localStorage.removeItem(RESIZE_KEYS.left); } catch (e) {}
     applyLeftPanelState(next);
     try {
       if (next === "auto") localStorage.removeItem(LP_KEY);
