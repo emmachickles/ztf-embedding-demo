@@ -652,17 +652,8 @@ async function init() {
   document.getElementById("view-select").addEventListener("change", e => {
     const newView = e.target.value;
     if (newView === currentView) return;
-    const wasGalaxy = currentView === "galaxy";
-    const willGalaxy = newView === "galaxy";
     currentView = newView;
-    // If either side of the transition is the galaxy view, the trace
-    // count changes (backdrop heatmap appears/disappears), which the
-    // animate path doesn't handle. Do a full renderScatter instead.
-    if (wasGalaxy || willGalaxy) {
-      renderScatter(currentColorBy);
-    } else {
-      animateViewChange();
-    }
+    renderScatter(currentColorBy);
   });
   document.getElementById("hl-knn").addEventListener("change", e => {
     highlightKnn = e.target.checked;
