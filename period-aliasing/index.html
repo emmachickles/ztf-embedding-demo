@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<!--
+  Interactive per-source viewer (STUB) — Figure-1 source only.
+  "Template Matching, Not Time Learning" (AI4Physics @ ICML 2026).
+
+  Shows the eclipsing-binary example from Figure 1: its Lomb-Scargle
+  periodogram and a live phase-folded light curve. Drag the period slider
+  (or use the preset buttons) to fold at the true period (clean double
+  eclipse) vs the LS peak at P/2 or the daily aliases (where the folded
+  curve falls apart) — illustrating why a period estimator gets fooled.
+
+  This is a single-source stub. Generalizing to clickable points across
+  the full period-scatter is the natural next step (see README).
+
+  Serve locally with:  python -m http.server   (then open localhost:8000)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Period aliasing — interactive (Fig. 1 source)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         color: #211e37; max-width: 860px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 1.25rem; margin-bottom: 0.2rem; }
+  .sub { color: #555; margin-top: 0; font-size: 0.92rem; }
+  .controls { margin: 14px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { border: 1px solid #cbd0e0; background: #f4f2fc; color: #211e37;
+           border-radius: 7px; padding: 6px 11px; cursor: pointer; font-size: 0.9rem; }
+  button:hover { background: #e9e4fb; }
+  button.true   { border-color:#168a5a; } button.alias { border-color:#c52b80; }
+  #pval { font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 340px; vertical-align: middle; }
+  .note { color:#666; font-size:0.82rem; }
+</style>
+</head>
+<body>
+  <h1>Template Matching, Not Time Learning — period aliasing, live</h1>
+  <p class="sub" id="srcname">Loading source…</p>
+
+  <div id="pgram" style="height:300px"></div>
+
+  <div class="controls">
+    <button class="true"  onclick="setP(D.period_true)">True P</button>
+    <button class="alias" onclick="setP(D.ls_peak)">LS peak (P/2)</button>
+    <span id="aliasbtns"></span>
+    <label>fold period (d): <input id="slider" type="range" min="0.10" max="0.85" step="0.0002"></label>
+    <span id="pval"></span>
+  </div>
+
+  <div id="fold" style="height:340px"></div>
+  <p class="note">Two cycles shown. Fold at the true period → two clean eclipses;
+     fold at P/2 or a daily alias → the eclipses smear or collapse. That is the
+     aliasing the diagnostic accounts for.</p>
+
+<script>
+let D = null;
+
+function foldTrace(P) {
+  const out = [];
+  for (const b of ["g", "r"]) {
+    const bd = D.bands[b];
+    const ph = [], mm = [];
+    for (let i = 0; i < bd.t.length; i++) {
+      let p = ((bd.t[i] - D.t0) / P) % 1.0; if (p < 0) p += 1.0;
+      ph.push(p); mm.push(bd.m[i]);            // cycle 1
+      ph.push(p + 1.0); mm.push(bd.m[i]);      // cycle 2 (repeat)
+    }
+    out.push({ x: ph, y: mm, mode: "markers", type: "scattergl", name: b,
+               marker: { size: 4, color: bd.color, opacity: 0.6 } });
+  }
+  return out;
+}
+
+function drawFold(P) {
+  Plotly.react("fold", foldTrace(P), {
+    margin: { t: 10, r: 10, b: 45, l: 55 },
+    xaxis: { title: "phase", range: [0, 2] },
+    yaxis: { title: "Δm", autorange: "reversed" },
+    legend: { orientation: "h", y: 1.12 },
+  }, { displayModeBar: false });
+  document.getElementById("pval").textContent = P.toFixed(4) + " d";
+}
+
+function setP(P) { document.getElementById("slider").value = P; drawFold(P); }
+
+function drawPgram() {
+  const pg = D.periodogram;
+  const vlines = [];
+  const mark = (P, color, dash, name) => vlines.push({
+    x: [P, P], y: [0, Math.max(...pg.power)], mode: "lines", type: "scatter",
+    line: { color, dash, width: 2 }, name, hoverinfo: "name" });
+  mark(D.period_true, "#168a5a", "dash", "true P");
+  mark(D.ls_peak, "#c52b80", "solid", "LS peak (P/2)");
+  D.daily_aliases.forEach((P, i) => mark(P, "#999", "dot", i === 0 ? "daily aliases" : ""));
+  const spec = [{ x: pg.period, y: pg.power, mode: "lines", type: "scattergl",
+                  line: { color: "#302b78", width: 1 }, name: "LS power" }, ...vlines];
+  Plotly.react("pgram", spec, {
+    margin: { t: 10, r: 10, b: 45, l: 55 },
+    xaxis: { title: "period (days)", type: "log" },
+    yaxis: { title: "LS power" },
+    legend: { orientation: "h", y: 1.15 },
+  }, { displayModeBar: false });
+}
+
+fetch("data/source_Ecl_Binary.json").then(r => r.json()).then(d => {
+  D = d;
+  document.getElementById("srcname").textContent =
+    `Source ${d.name} — eclipsing binary. True P = ${d.period_true} d; LS top peak = ${d.ls_peak} d (the P/2 alias).`;
+  // alias preset buttons
+  const ab = document.getElementById("aliasbtns");
+  d.daily_aliases.forEach(P => {
+    const b = document.createElement("button");
+    b.className = "alias"; b.textContent = P.toFixed(3) + " d";
+    b.onclick = () => setP(P); ab.appendChild(b);
+  });
+  document.getElementById("slider").addEventListener("input", e => drawFold(parseFloat(e.target.value)));
+  drawPgram();
+  setP(d.period_true);
+}).catch(e => {
+  document.getElementById("srcname").textContent =
+    "Could not load data/source_Ecl_Binary.json — serve over http (python -m http.server), not file://.";
+});
+</script>
+</body>
+</html>
