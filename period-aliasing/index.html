@@ -99,7 +99,7 @@ function drawPgram() {
     line: { color, dash, width: 2 }, name, hoverinfo: "name" });
   mark(D.period_true, "#168a5a", "dash", "true P");
   mark(D.ls_peak, "#c52b80", "solid", "LS peak (P/2)");
-  D.daily_aliases.forEach((P, i) => mark(P, "#999", "dot", i === 0 ? "daily aliases" : ""));
+  D.daily_aliases.forEach((P, i) => mark(P, "#999", "dot", i === 0 ? "P/2 peak ± k/day" : ""));
   const spec = [{ x: pg.period, y: pg.power, mode: "lines", type: "scattergl",
                   line: { color: "#302b78", width: 1 }, name: "LS power" }, ...vlines];
   Plotly.react("pgram", spec, {
@@ -119,7 +119,7 @@ function drawBls() {
     line: { color, dash, width: 2 }, name, hoverinfo: "name" });
   mark(D.period_true, "#168a5a", "dash", "true P");
   mark(D.bls_peak, "#c52b80", "solid", "BLS peak");
-  D.daily_aliases.forEach((P, i) => mark(P, "#999", "dot", i === 0 ? "daily aliases" : ""));
+  D.daily_aliases.forEach((P, i) => mark(P, "#999", "dot", i === 0 ? "P/2 peak ± k/day" : ""));
   const spec = [{ x: pg.period, y: pg.power, mode: "lines", type: "scattergl",
                   line: { color: "#7c3aed", width: 1 }, name: "BLS power" }, ...vlines];
   Plotly.react("bls", spec, {
@@ -137,13 +137,17 @@ function showGridNote() {
     `oversampling &times;${g.ls_oversample} (&Delta;f = 1/(T&middot;oversample), baseline T = ${g.baseline_days} d): ` +
     `${g.ls_npts.toLocaleString()} frequencies over P = ${g.ls_min_p}&ndash;${g.ls_max_p} d. ` +
     `BLS: oversampling &times;${g.bls_oversample} over P = ${g.bls_min_p}&ndash;${g.bls_max_p} d, ` +
-    `box widths {${g.bls_durations.join(", ")}} d. Curves are peak-preserving downsampled for display.`;
+    `box widths {${g.bls_durations.join(", ")}} d. Curves are peak-preserving downsampled for display.` +
+    "<br><strong>Aliases.</strong> The dotted lines are the diurnal sidelobes of the dominant " +
+    "P/2 peak, not simple period sub-harmonics: f = 2&middot;f<sub>true</sub> &plusmn; k&middot;(1 cycle/day), " +
+    "k = 1,2,3. They are drawn at exactly 1.000 cycle/day; real ground-based aliasing is at the " +
+    "sidereal rate &asymp; 1.0027/day, so the true alias peaks can sit a hair off the marked lines.";
 }
 
 fetch("data/source_Ecl_Binary.json").then(r => r.json()).then(d => {
   D = d;
   document.getElementById("srcname").textContent =
-    `Source ${d.name} — eclipsing binary. True P = ${d.period_true} d; LS top peak = ${d.ls_peak} d (the P/2 alias); BLS top peak = ${d.bls_peak} d (a daily alias).`;
+    `Source ${d.name} — eclipsing binary. True P = ${d.period_true} d; LS top peak = ${d.ls_peak} d (the P/2 harmonic); BLS top peak = ${d.bls_peak} d (a diurnal alias of the P/2 peak).`;
   // alias preset buttons
   const ab = document.getElementById("aliasbtns");
   d.daily_aliases.forEach(P => {
