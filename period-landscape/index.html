@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!--
+  Why gradient period-search fails — interactive landscape demo.
+  "Template Matching, Not Time Learning" (AI4Physics @ ICML 2026).
+
+  Shows the differentiable phase-dispersion landscape of the Fig-1 eclipsing
+  binary. Pick a start period and watch gradient descent walk the landscape:
+  it stalls on the flat plateau or slides into an alias, almost never reaching
+  the true period. The bandwidth control (kernel annealing) trades a navigable-
+  but-shallow landscape against a spiky-but-informative one.
+
+  Data: interactive/data/landscape_Ecl_Binary.json (make_landscape_data.py).
+  Serve over http (python -m http.server), not file://.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why gradient period-search fails</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         color:#211e37; max-width:880px; margin:24px auto; padding:0 16px; }
+  h1 { font-size:1.25rem; margin-bottom:.2rem; }
+  .sub { color:#555; margin-top:0; font-size:.92rem; }
+  .controls { margin:14px 0; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button, select { border:1px solid #cbd0e0; background:#f4f2fc; color:#211e37;
+           border-radius:7px; padding:6px 11px; cursor:pointer; font-size:.9rem; }
+  button:hover { background:#e9e4fb; }
+  button.bw.active { background:#7c3aed; color:#fff; border-color:#7c3aed; }
+  button.play { border-color:#168a5a; }
+  #status { font-variant-numeric:tabular-nums; color:#444; font-size:.9rem; }
+  .note { color:#666; font-size:.84rem; }
+  label.grp { font-weight:600; font-size:.85rem; margin-right:2px; }
+</style>
+</head>
+<body>
+  <h1>Why gradient period-search fails</h1>
+  <p class="sub" id="srcname">Loading…</p>
+
+  <div class="controls">
+    <label class="grp">kernel bandwidth:</label>
+    <span id="bwbtns"></span>
+    <span style="width:14px"></span>
+    <label class="grp">start period:</label>
+    <select id="startsel"></select>
+    <button class="play" id="play">▶ Play descent</button>
+    <button id="reset">Reset</button>
+  </div>
+  <p id="status">&nbsp;</p>
+
+  <div id="plot" style="height:420px"></div>
+
+  <p class="note">The curve is the differentiable phase-dispersion (lower = more
+  coherent fold). Markers: <b style="color:#168a5a">true P</b>,
+  <b style="color:#c52b80">P/2</b> (the Lomb–Scargle peak), 2P, and the diurnal
+  aliases. <b>Narrow</b> bandwidth = the real, spiky landscape: nearly flat
+  everywhere with razor-thin dips, so gradient descent has no slope to follow and
+  <b>stalls</b>. <b>Wide</b> bandwidth = smooth but the dips wash out and shift to
+  <b>aliases</b>. Either way, gradient descent almost never finds the true period —
+  which is why period search uses dense grid scans, not optimization.</p>
+
+<script>
+let D=null, BW=null, anim=null;
+const FCOL={true:"#168a5a", half:"#c52b80", other:"#999"};
+
+function shapesAndAnnos(){
+  const feats=[[D.true_P,"true P",FCOL.true,"dash"],[D.half_P,"P/2",FCOL.half,"solid"],
+               [D.double_P,"2P",FCOL.other,"dot"]].concat(D.aliases.map(P=>[P,"",FCOL.other,"dot"]));
+  const shapes=feats.map(([P,,c,dash])=>({type:"line",x0:P,x1:P,yref:"paper",y0:0,y1:1,
+     line:{color:c,dash:dash,width:P==D.true_P?2.5:(P==D.half_P?2:1)}}));
+  const annos=feats.filter(([,n])=>n).map(([P,n,c])=>({x:Math.log10(P),y:1.06,yref:"paper",
+     xref:"x",text:n,showarrow:false,font:{color:c,size:12}}));
+  return {shapes,annos};
+}
+
+function curBW(){ return String(BW); }
+
+function draw(){
+  const land=D.landscapes[curBW()];
+  const {shapes,annos}=shapesAndAnnos();
+  const data=[
+    {x:D.period, y:land, mode:"lines", type:"scattergl", name:"dispersion",
+     line:{color:"#302b78",width:1.2}, hoverinfo:"x+y"},
+    {x:[], y:[], mode:"lines+markers", name:"descent trail",
+     line:{color:"#d69e1e",width:1.5}, marker:{size:4,color:"#d69e1e"}},
+    {x:[], y:[], mode:"markers", name:"current P̂",
+     marker:{size:15,color:"#c82846",line:{color:"#fff",width:1.5}}},
+  ];
+  Plotly.react("plot", data, {
+    margin:{t:24,r:12,b:48,l:56},
+    xaxis:{title:"period (days)", type:"log", range:[Math.log10(0.1),Math.log10(2.0)]},
+    yaxis:{title:"phase dispersion  (↓ = coherent)", range:[0,1.05]},
+    shapes, annotations:annos, showlegend:true,
+    legend:{orientation:"h", y:1.13, x:0.5, xanchor:"center"},
+  }, {displayModeBar:false});
+}
+
+function curTraj(){
+  const key = D.trajectories[curBW()] ? curBW() : D.gd_bandwidths[0];
+  const i = +document.getElementById("startsel").value;
+  return D.trajectories[key][i].path;
+}
+
+function stop(){ if(anim){clearInterval(anim);anim=null;} }
+
+function play(){
+  stop();
+  const path=curTraj(); let k=0;
+  Plotly.restyle("plot",{x:[[]],y:[[]]},[1]);  // clear trail
+  anim=setInterval(()=>{
+    if(k>=path.length){ stop();
+      const last=path[path.length-1], Pf=Math.pow(10,last[0]);
+      const tag = Math.abs(Pf-D.true_P)/D.true_P<0.03 ? "✓ reached true P"
+                : (Math.abs(Pf-D.half_P)/D.half_P<0.03 ? "✗ stuck at the P/2 alias"
+                : "✗ stalled / landed on an alias");
+      document.getElementById("status").innerHTML=
+        `descent ended at <b>${Pf.toFixed(4)} d</b> — ${tag}`;
+      return; }
+    const xs=path.slice(0,k+1).map(p=>Math.pow(10,p[0]));
+    const ys=path.slice(0,k+1).map(p=>p[1]);
+    const xn=Math.pow(10,path[k][0]);
+    Plotly.restyle("plot",{x:[xs],y:[ys]},[1]);
+    Plotly.restyle("plot",{x:[[xn]],y:[[path[k][1]]]},[2]);
+    document.getElementById("status").innerHTML=
+      `step ${k}/${path.length-1} — P̂ = <b>${xn.toFixed(4)} d</b>, dispersion ${path[k][1].toFixed(3)}`;
+    k++;
+  },45);
+}
+
+function reset(){ stop(); Plotly.restyle("plot",{x:[[],[]],y:[[],[]]},[1,2]);
+  document.getElementById("status").innerHTML="&nbsp;"; }
+
+function populateStarts(){
+  const key = D.trajectories[curBW()] ? curBW() : D.gd_bandwidths[0];
+  const sel=document.getElementById("startsel"); sel.innerHTML="";
+  D.trajectories[key].forEach((tr,i)=>{
+    const o=document.createElement("option"); o.value=i; o.text=tr.start.toFixed(3)+" d";
+    sel.appendChild(o);
+  });
+}
+
+fetch("data/landscape_Ecl_Binary.json").then(r=>r.json()).then(d=>{
+  D=d; D.period=d.grid_logP.map(x=>Math.pow(10,x));
+  document.getElementById("srcname").textContent=
+    `Source ${d.name} — eclipsing binary. True P = ${d.true_P} d. Gradient descent on the phase-fold objective vs. the true period.`;
+  // bandwidth buttons: only those with trajectories, narrow→wide
+  const bwwrap=document.getElementById("bwbtns");
+  const labels={[d.gd_bandwidths[0]]:"narrow",[d.gd_bandwidths[1]]:"medium",[d.gd_bandwidths[2]]:"wide"};
+  d.gd_bandwidths.forEach(bw=>{
+    const b=document.createElement("button"); b.className="bw"; b.textContent=`${labels[bw]} (${bw})`;
+    b.onclick=()=>{ BW=bw; document.querySelectorAll(".bw").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active"); draw(); populateStarts(); reset(); };
+    bwwrap.appendChild(b);
+  });
+  BW=d.gd_bandwidths[0];
+  document.querySelector(".bw").classList.add("active");
+  draw(); populateStarts();
+  document.getElementById("play").onclick=play;
+  document.getElementById("reset").onclick=reset;
+  document.getElementById("startsel").onchange=reset;
+}).catch(()=>{ document.getElementById("srcname").textContent=
+  "Could not load data/landscape_Ecl_Binary.json — serve over http (python -m http.server)."; });
+</script>
+</body>
+</html>
