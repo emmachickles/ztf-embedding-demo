@@ -308,6 +308,11 @@
           <option value="anom_ocsvm">Anomaly: One-Class SVM</option>
         </optgroup>
       </select>
+      <label id="anom-rep-label" title="Anomaly scores computed on the SSL embedding vs the classical light-curve features">Anom rep:</label>
+      <select id="anom-rep" title="Switch the anomaly representation; the top-anomalies panel and coloring update.">
+        <option value="emb">Embedding</option>
+        <option value="feat">Features</option>
+      </select>
       <input type="text" id="search-input" placeholder="RA Dec (deg)" title="Type RA Dec in decimal degrees, e.g. 276.85 25.13">
       <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
       <button id="random-btn" title="Show a random source">🎲 Random</button>
@@ -343,6 +348,12 @@
       <div id="info-content">
         <div class="placeholder" style="height: auto; padding: 8px 0;">Click a point in the scatter plot.</div>
       </div>
+    </div>
+    <div class="panel" data-name="Top anomalies" id="anom-panel" style="display:none">
+      <div class="panel-title"><span id="anom-panel-title">Top anomalies</span></div>
+      <style>#anom-list .anom-row{cursor:pointer;padding:2px 6px;border-radius:4px}
+        #anom-list .anom-row:hover{background:#1f2740}</style>
+      <div id="anom-list" style="max-height:260px;overflow:auto;padding:4px 0;font-size:12px"></div>
     </div>
     <div class="panel" data-name="Light curve">
       <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 6px;">
@@ -588,6 +599,7 @@ let pinnedSource = null;    // source pinned for side-by-side LC compare
 let pinnedLC = null;
 let currentView = "umap";   // "umap" or "radec"
 let currentColorBy = "var_type";
+let anomRep = "emb";        // anomaly representation: "emb" (embedding) or "feat" (features)
 let highlightKnn = false;
 
 // LC shards are loaded lazily; cache the last few in memory
@@ -655,6 +667,12 @@ async function init() {
   document.getElementById("color-select").addEventListener("change", e => {
     currentColorBy = e.target.value;
     renderScatter(currentColorBy);
+    updatePanelForCurrent();
+  });
+  document.getElementById("anom-rep").addEventListener("change", e => {
+    anomRep = e.target.value;
+    renderScatter(currentColorBy);
+    updatePanelForCurrent();
   });
   document.getElementById("view-select").addEventListener("change", e => {
     const newView = e.target.value;
@@ -1761,7 +1779,31 @@ function populateLayerDropdown() {
   }
 }
 
+function isAnom(cb){ return typeof cb === "string" && cb.startsWith("anom_"); }
+function resolveAnom(cb){
+  return (isAnom(cb) && anomRep === "feat" && !cb.endsWith("_feat")) ? cb + "_feat" : cb;
+}
+function updatePanelForCurrent(){ updateAnomalyPanel(resolveAnom(currentColorBy)); }
+function updateAnomalyPanel(field){
+  const panel = document.getElementById("anom-panel");
+  if (!field || !field.startsWith("anom_")) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  const rep = field.endsWith("_feat") ? "features" : "embedding";
+  const method = field.replace("anom_", "").replace("_feat", "");
+  document.getElementById("anom-panel-title").textContent = `Top anomalies — ${method} (${rep})`;
+  const top = [...points].sort((a, b) => (b[field] - a[field])).slice(0, 25);
+  const list = document.getElementById("anom-list");
+  list.innerHTML = top.map((p, i) =>
+    `<div class="anom-row" data-idx="${p.idx}">${i + 1}. `
+    + `<b style="color:${VAR_TYPE_COLORS[p.var_type] || '#888'}">${p.var_type}</b> #${p.idx}`
+    + ` · P=${Number.isFinite(p.period) ? p.period.toFixed(3) : '—'}d`
+    + `<span style="float:right;color:#8b949e">${(p[field] ?? 0).toFixed(3)}</span></div>`).join("");
+  list.querySelectorAll(".anom-row").forEach(r =>
+    r.onclick = () => showSource(+r.dataset.idx));
+}
+
 function renderScatter(colorBy) {
+  colorBy = resolveAnom(colorBy);
   const div = document.getElementById("scatter");
   let traces;
 
@@ -1795,6 +1837,9 @@ function renderScatter(colorBy) {
       bls_depth: "log₁₀ BLS depth", bls_ntr: "log₁₀ BLS n transits",
       anom_consensus: "anomaly: consensus (0–1)", anom_if: "anomaly: IsolationForest",
       anom_lof: "anomaly: LOF", anom_gmm: "anomaly: GMM", anom_ocsvm: "anomaly: OneClassSVM",
+      anom_consensus_feat: "anomaly: consensus (features)", anom_if_feat: "anomaly: IF (features)",
+      anom_lof_feat: "anomaly: LOF (features)", anom_gmm_feat: "anomaly: GMM (features)",
+      anom_ocsvm_feat: "anomaly: OCSVM (features)",
     }[colorBy];
     // Log-scaled fields: significance/power/depth/MAD/variance/N span many orders.
     const logFields = new Set([
