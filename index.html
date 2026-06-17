@@ -334,7 +334,7 @@
         Highlight kNN
       </label>
       <label style="margin-left: 4px;">
-        <input type="checkbox" id="hl-anom" title="Dim everything and highlight the top ~1% anomalies of the chosen model (respects the Anom rep toggle)">
+        <input type="checkbox" id="hl-anom" title="Dim everything and highlight the top ~1% anomalies of the chosen model (respects the Anom rep toggle). When on, use ← → to step through sources in anomaly-score order.">
         Highlight anomalies
       </label>
       <select id="hl-anom-model" title="Which anomaly model's top sources to highlight">
@@ -948,6 +948,15 @@ async function init() {
       document.getElementById("bio-modal").classList.add("open");
     } else if (k === "?" || k === "/") {
       document.getElementById("help-modal").classList.add("open");
+    } else if ((k === "arrowright" || k === "arrowleft") && highlightAnom) {
+      // Step through sources in anomaly-score order of the highlighted model.
+      e.preventDefault();
+      const field = resolveAnom(document.getElementById("hl-anom-model").value);
+      const order = points.slice().sort((a, b) => b[field] - a[field]);  // most anomalous first
+      let pos = currentSource ? order.findIndex(pt => pt.idx === currentSource.idx) : -1;
+      pos = (k === "arrowright") ? pos + 1 : pos - 1;
+      pos = Math.max(0, Math.min(order.length - 1, pos));
+      showSource(order[pos].idx);
     }
   });
 
