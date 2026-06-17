@@ -309,6 +309,8 @@
         </optgroup>
         <optgroup label="Anomaly (Pesta-style: DINOv2 visual)">
           <option value="anom_dinov2">Anomaly: DINOv2 + IF ensemble</option>
+          <option value="anom_dinov2_prop">Anomaly: DINOv2 propagated (round 2)</option>
+          <option value="agent_vetted">Agent-vetted label (1=anomaly / 0=normal)</option>
         </optgroup>
       </select>
       <label id="anom-rep-label" title="Anomaly scores computed on the SSL embedding vs the classical light-curve features">Anom rep:</label>
@@ -342,6 +344,7 @@
         <option value="anom_gmm">GMM</option>
         <option value="anom_ocsvm">OCSVM</option>
         <option value="anom_dinov2">DINOv2</option>
+        <option value="anom_dinov2_prop">DINOv2 prop</option>
       </select>
       <label style="margin-left: 4px;">
         <input type="checkbox" id="lasso-mode" title="Lasso a region of the scatter to see aggregate stats for those sources">
@@ -353,11 +356,11 @@
   <div class="resizer" id="resizer-right" title="Drag to resize source-info panel"></div>
   <div class="right">
     <div class="restore-bar" id="restore-bar"></div>
-    <div class="info-card" id="info-card" data-name="Source info">
+    <div class="info-card collapsed" id="info-card" data-name="Source info">
       <h3 style="display: flex; align-items: center;">
         <span>Source Info</span>
         <span class="panel-tools">
-          <button class="panel-btn info-close" title="Hide panel">×</button>
+          <button class="panel-btn info-close" title="Show panel">+</button>
         </span>
       </h3>
       <div id="info-content">
@@ -1202,6 +1205,7 @@ function setupPanelControls() {
       syncRestoreForInfo();
       window.dispatchEvent(new Event("resize"));
     });
+    syncRestoreForInfo();   // info card starts collapsed -> show its restore chip
   }
 }
 
@@ -1804,9 +1808,9 @@ function populateLayerDropdown() {
 }
 
 function isAnom(cb){ return typeof cb === "string" && cb.startsWith("anom_"); }
+const FEAT_METHODS = new Set(["anom_if","anom_lof","anom_gmm","anom_ocsvm","anom_consensus"]);
 function resolveAnom(cb){
-  if (cb === "anom_dinov2") return cb;   // visual model: no embedding/features variant
-  return (isAnom(cb) && anomRep === "feat" && !cb.endsWith("_feat")) ? cb + "_feat" : cb;
+  return (FEAT_METHODS.has(cb) && anomRep === "feat") ? cb + "_feat" : cb;  // _feat only for SNAD methods
 }
 function updatePanelForCurrent(){ updateAnomalyPanel(resolveAnom(currentColorBy)); }
 function updateAnomalyPanel(field){
@@ -1863,6 +1867,7 @@ function renderScatter(colorBy) {
       anom_consensus: "anomaly: consensus (0–1)", anom_if: "anomaly: IsolationForest",
       anom_lof: "anomaly: LOF", anom_gmm: "anomaly: GMM", anom_ocsvm: "anomaly: OneClassSVM",
       anom_dinov2: "anomaly: DINOv2 + IF (visual)",
+      anom_dinov2_prop: "anomaly: DINOv2 propagated (rd 2)", agent_vetted: "agent-vetted (1=anomaly,0=normal)",
       anom_consensus_feat: "anomaly: consensus (features)", anom_if_feat: "anomaly: IF (features)",
       anom_lof_feat: "anomaly: LOF (features)", anom_gmm_feat: "anomaly: GMM (features)",
       anom_ocsvm_feat: "anomaly: OCSVM (features)",
