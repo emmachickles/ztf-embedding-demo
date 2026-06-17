@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<!-- Pitch deck: data-driven priors for accreting binaries (reveal.js + MathJax).
+     Relates Perreault-Levasseur's score-based lensing program to lcurve-lite.
+     Deploy alongside the period-aliasing / period-landscape demos so the
+     relative links resolve. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data-driven priors for accreting binaries</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/white.css">
+<style>
+  :root{ --indigo:#302b78; --violet:#7c3aed; --blue:#2563eb; --magenta:#c52b80; --green:#168a5a; }
+  .reveal { font-size: 30px; color:#211e37; }
+  .reveal h1,.reveal h2,.reveal h3 { color:var(--indigo); text-transform:none; letter-spacing:0; }
+  .reveal section img { border:0; box-shadow:none; }
+  .reveal table { font-size:0.7em; }
+  .reveal table th { color:var(--violet); }
+  .small { font-size:0.62em; color:#555; }
+  .tag { color:var(--magenta); font-weight:700; }
+  .box { background:#f4f2fc; border-left:6px solid var(--violet); padding:.5em .8em; border-radius:6px; }
+  .reveal a { color:var(--blue); }
+  .kpi { color:var(--magenta); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <h1 style="font-size:1.5em">Data-driven priors for accreting binaries</h1>
+  <p style="color:var(--violet)">Porting Perreault-Levasseur's score-based lensing program<br>to high-speed binary light curves</p>
+  <p class="small">Emma Chickles · preliminary motivation deck · built on <code>lcurve-lite</code> + the original <code>lroche</code></p>
+</section>
+
+<section>
+  <h2>When the old recipe breaks</h2>
+  <p class="box">As data become higher-SNR, higher-cadence, higher-resolution, the strategy
+  <b>[simple physical model] + [Gaussian residuals] + [a few nuisance parameters]</b>
+  starts to fail — the data resolve structure the parameterization was never built to describe.</p>
+  <p class="small">Lensing (Perreault-Levasseur, AstroAI 2026): the source galaxy, lens mass distribution,
+  PSF/noise, and population prior are too high-dimensional or too structured for analytic forms.</p>
+</section>
+
+<section>
+  <h2>Our own data already shows it</h2>
+  <img src="motivation_j1013.png" style="width:92%">
+  <p class="small">ATLAS&nbsp;J1013$-$4516 (Chickles+ 2026), ULTRACAM. Best-fit <code>lroche</code> (run live on hypernova):
+  <span class="kpi">&chi;²/N&nbsp;=&nbsp;5.8</span>, residuals <span class="kpi">2.4&times; the photon noise</span>,
+  <span class="kpi">lag-1&nbsp;ACF&nbsp;=&nbsp;+0.71</span> (coherent, not white), up to <span class="kpi">7&sigma;</span> — and
+  <span class="kpi">chromatic</span> (strong in $g$, weak in $i$). Missing physics (evolving hot spot / stream / flickering), not bad fitting.</p>
+</section>
+
+<section>
+  <h2>The inverse problem</h2>
+  <p>We observe \( y = A(x) + n \) and want the posterior</p>
+  \[ p(x\mid y)\;\propto\; \underbrace{p(y\mid x)}_{\text{likelihood / noise}}\;\underbrace{p(x)}_{\text{prior}} \]
+  <ul>
+    <li>\(x\): the thing we can't parameterize well (source galaxy → accretion structure)</li>
+    <li>\(A\): the forward model (lens equation → light-curve model)</li>
+    <li>\(n\): the noise — and it is <i>not</i> Gaussian/white</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Score-based prior &amp; posterior</h2>
+  <p>Learn the <span class="tag">prior score</span> with a diffusion / denoising model:</p>
+  \[ s_\theta(x,t)\;\approx\;\nabla_x \log p_t(x) \]
+  <p>The posterior score <b>splits</b> into a likelihood term + the learned prior:</p>
+  \[ \nabla_x \log p(x\mid y)\;=\;\nabla_x \log p(y\mid x)\;+\;\nabla_x \log p(x) \]
+  <p class="small">Sample reconstructions by annealed Langevin / reverse SDE
+  \( \;dx = [\,f - g^2 s_\theta\,]\,dt + g\,d\bar w \). (Adam, Hezaveh, Perreault-Levasseur 2022 — source galaxies.)</p>
+</section>
+
+<section>
+  <h2>Don't assume the noise — learn it</h2>
+  <p class="box"><b>SLIC</b> (Legin et al.): learn the likelihood/noise score
+  \( \nabla_x \log p(y\mid x) \) from <i>real noise realizations</i> — enabling
+  non-Gaussian, correlated, spatially varying noise.</p>
+  <p><span class="tag">Population-level updating.</span> An incomplete prior + sufficiently
+  informative data reveals that the prior is <i>missing a real class</i> (the "4&sigma; from
+  lensed images" example) — i.e. discovery falls out of the same machinery.</p>
+</section>
+
+<section>
+  <h2>The mapping — term by term</h2>
+  <table>
+  <tr><th>symbol</th><th>strong lensing</th><th>accreting binary</th></tr>
+  <tr><td>\(y\)</td><td>lensed image</td><td>high-speed multiband light curve</td></tr>
+  <tr><td>\(x\)</td><td>source-galaxy surface brightness</td><td>disk / hot-spot / stream brightness map</td></tr>
+  <tr><td>\(A\)</td><td>lens equation</td><td><b>lroche</b> forward model — differentiable in <code>lcurve-lite</code></td></tr>
+  <tr><td>\(n\)</td><td>correlated image noise</td><td>astrophysical flickering + instrumental noise</td></tr>
+  <tr><td>\(p(x)\)</td><td>galaxy population prior</td><td>accretion-structure population prior</td></tr>
+  <tr><td>OOD</td><td>new source/lens class</td><td>new light-curve morphology / new system</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>The unfair advantage</h2>
+  <ul>
+    <li><b>\(A\) is already differentiable</b> — <code>lcurve-lite</code> is a GPU/gradient-friendly <code>lroche</code>,
+        the substrate the likelihood-score term \( \nabla_x\log p(y\mid x) \) needs.</li>
+    <li><b>Real systems with the gap measured</b> — J1013 residuals above.</li>
+    <li><b>Discovery + measure-the-gap methodology in hand</b> — the period diagnostic and demos.</li>
+  </ul>
+  <p class="box">Principle throughout: <b>keep the physics rigid, make the nuisance flexible</b> —
+  still infer masses / inclination / period; let the learned component absorb only the structured nuisance.</p>
+</section>
+
+<section>
+  <h2>Roadmap</h2>
+  <table>
+  <tr><th>#</th><th>stage</th><th>lensing analog</th></tr>
+  <tr><td>0</td><td><b>residual modeling</b> (underway)</td><td>look at residuals before assuming Gaussian noise</td></tr>
+  <tr><td>1</td><td>flexible disk/hot-spot component</td><td>learned source morphology</td></tr>
+  <tr><td>2</td><td>learned noise score</td><td>SLIC</td></tr>
+  <tr><td>3</td><td>population prior</td><td>galaxy population prior</td></tr>
+  <tr><td>4</td><td>discovery / anomaly bridge</td><td>OOD reveals a missing class</td></tr>
+  <tr><td>5</td><td>diffusion prior + forward-model conditioning</td><td>full score-based posterior</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>"How many examples are we willing to burn?"</h2>
+  <p>Galaxies are <b>abundant</b> → learn the prior from real images.<br>
+  Accreting binaries are <b>rare</b> → <span class="tag">invert the strategy</span>:</p>
+  <p class="box">Simulation-pretrain the prior with <code>lcurve-lite</code>, then <b>hierarchically update on
+  the few real systems</b>. Per-system before population. This data-budget inversion is the methodological contribution.</p>
+</section>
+
+<section>
+  <h2>Momentum — live tooling</h2>
+  <p class="small">The diagnostic + discovery machinery is already built and interactive:</p>
+  <iframe src="../period-landscape/" style="width:90%;height:360px;border:1px solid #ccc;border-radius:8px"></iframe>
+  <p class="small"><a href="../period-aliasing/">period-aliasing demo</a> ·
+     <a href="../period-landscape/">why gradient period-search fails</a> ·
+     <a href="https://github.com/emmachickles/period-diagnostic">period-diagnostic (ICML 2026)</a></p>
+</section>
+
+<section>
+  <h2>Why now / the ask</h2>
+  <ul>
+    <li>Stage 0 is <b>underway</b> on a real system; <code>lcurve-lite</code> is near numerical parity.</li>
+    <li>The methodology is <b>Laurence's</b> — and the rare-object data-budget twist is a genuine extension.</li>
+    <li><b>Next:</b> bring the Stage-0 residual figure to a meeting to de-risk the score-based posterior design.</li>
+  </ul>
+  <p class="small">Refs: Adam+ 2022 (score-based source priors); Legin+ (SLIC); Song+ 2021 (score SDEs);
+  Marsh / Copperwheat+ 2010 (lcurve). <i>verify exact citations.</i></p>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash:true, slideNumber:"c/t", plugins:[RevealMath.MathJax3] });
+</script>
+</body>
+</html>
