@@ -300,6 +300,13 @@
           <option value="bls_depth">BLS depth</option>
           <option value="bls_ntr">BLS n transits</option>
         </optgroup>
+        <optgroup label="Anomaly (SNAD-style, on the SSL embedding)">
+          <option value="anom_consensus">Anomaly: consensus</option>
+          <option value="anom_if">Anomaly: Isolation Forest</option>
+          <option value="anom_lof">Anomaly: LOF</option>
+          <option value="anom_gmm">Anomaly: GMM</option>
+          <option value="anom_ocsvm">Anomaly: One-Class SVM</option>
+        </optgroup>
       </select>
       <input type="text" id="search-input" placeholder="RA Dec (deg)" title="Type RA Dec in decimal degrees, e.g. 276.85 25.13">
       <button id="search-btn" title="Find the nearest source to the entered RA, Dec">Go</button>
@@ -1786,6 +1793,8 @@ function renderScatter(colorBy) {
       ls_skew: "Skew", ls_kurt: "Kurtosis",
       bls_power: "log₁₀ BLS power", bls_snr: "BLS SNR",
       bls_depth: "log₁₀ BLS depth", bls_ntr: "log₁₀ BLS n transits",
+      anom_consensus: "anomaly: consensus (0–1)", anom_if: "anomaly: IsolationForest",
+      anom_lof: "anomaly: LOF", anom_gmm: "anomaly: GMM", anom_ocsvm: "anomaly: OneClassSVM",
     }[colorBy];
     // Log-scaled fields: significance/power/depth/MAD/variance/N span many orders.
     const logFields = new Set([
