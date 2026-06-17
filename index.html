@@ -307,6 +307,9 @@
           <option value="anom_gmm">Anomaly: GMM</option>
           <option value="anom_ocsvm">Anomaly: One-Class SVM</option>
         </optgroup>
+        <optgroup label="Anomaly (Pesta-style: DINOv2 visual)">
+          <option value="anom_dinov2">Anomaly: DINOv2 + IF ensemble</option>
+        </optgroup>
       </select>
       <label id="anom-rep-label" title="Anomaly scores computed on the SSL embedding vs the classical light-curve features">Anom rep:</label>
       <select id="anom-rep" title="Switch the anomaly representation; the top-anomalies panel and coloring update.">
@@ -338,6 +341,7 @@
         <option value="anom_lof">LOF</option>
         <option value="anom_gmm">GMM</option>
         <option value="anom_ocsvm">OCSVM</option>
+        <option value="anom_dinov2">DINOv2</option>
       </select>
       <label style="margin-left: 4px;">
         <input type="checkbox" id="lasso-mode" title="Lasso a region of the scatter to see aggregate stats for those sources">
@@ -1801,6 +1805,7 @@ function populateLayerDropdown() {
 
 function isAnom(cb){ return typeof cb === "string" && cb.startsWith("anom_"); }
 function resolveAnom(cb){
+  if (cb === "anom_dinov2") return cb;   // visual model: no embedding/features variant
   return (isAnom(cb) && anomRep === "feat" && !cb.endsWith("_feat")) ? cb + "_feat" : cb;
 }
 function updatePanelForCurrent(){ updateAnomalyPanel(resolveAnom(currentColorBy)); }
@@ -1857,6 +1862,7 @@ function renderScatter(colorBy) {
       bls_depth: "log₁₀ BLS depth", bls_ntr: "log₁₀ BLS n transits",
       anom_consensus: "anomaly: consensus (0–1)", anom_if: "anomaly: IsolationForest",
       anom_lof: "anomaly: LOF", anom_gmm: "anomaly: GMM", anom_ocsvm: "anomaly: OneClassSVM",
+      anom_dinov2: "anomaly: DINOv2 + IF (visual)",
       anom_consensus_feat: "anomaly: consensus (features)", anom_if_feat: "anomaly: IF (features)",
       anom_lof_feat: "anomaly: LOF (features)", anom_gmm_feat: "anomaly: GMM (features)",
       anom_ocsvm_feat: "anomaly: OCSVM (features)",
