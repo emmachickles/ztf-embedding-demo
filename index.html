@@ -329,6 +329,17 @@
         Highlight kNN
       </label>
       <label style="margin-left: 4px;">
+        <input type="checkbox" id="hl-anom" title="Dim everything and highlight the top ~1% anomalies of the chosen model (respects the Anom rep toggle)">
+        Highlight anomalies
+      </label>
+      <select id="hl-anom-model" title="Which anomaly model's top sources to highlight">
+        <option value="anom_consensus">consensus</option>
+        <option value="anom_if">IF</option>
+        <option value="anom_lof">LOF</option>
+        <option value="anom_gmm">GMM</option>
+        <option value="anom_ocsvm">OCSVM</option>
+      </select>
+      <label style="margin-left: 4px;">
         <input type="checkbox" id="lasso-mode" title="Lasso a region of the scatter to see aggregate stats for those sources">
         Lasso
       </label>
@@ -601,6 +612,7 @@ let currentView = "umap";   // "umap" or "radec"
 let currentColorBy = "var_type";
 let anomRep = "emb";        // anomaly representation: "emb" (embedding) or "feat" (features)
 let highlightKnn = false;
+let highlightAnom = false;  // highlight top anomalies of the chosen model
 
 // LC shards are loaded lazily; cache the last few in memory
 const lcCache = new Map();
@@ -684,6 +696,14 @@ async function init() {
     highlightKnn = e.target.checked;
     if (highlightKnn && currentSource) applyKnnHighlight(currentSource.idx);
     else clearKnnHighlight();
+  });
+  document.getElementById("hl-anom").addEventListener("change", e => {
+    highlightAnom = e.target.checked;
+    if (highlightAnom) applyAnomHighlight();
+    else clearAnomHighlight();
+  });
+  document.getElementById("hl-anom-model").addEventListener("change", () => {
+    if (highlightAnom) applyAnomHighlight();
   });
   document.getElementById("layer-select").addEventListener("change", e => {
     const newLayer = e.target.value;
@@ -1942,6 +1962,7 @@ function renderScatter(colorBy) {
 
   // Restore kNN highlight if it was active
   if (highlightKnn && currentSource) applyKnnHighlight(currentSource.idx);
+  if (highlightAnom) applyAnomHighlight();
 }
 
 function scatterLayout() {
@@ -1985,6 +2006,7 @@ function scatterLayout() {
 // positions, dim main traces underneath. Survives view-toggle because
 // its customdata gets re-mapped through pointsByIdx in animateViewChange.
 const KNN_TRACE_TAG = "__knn_highlight__";
+const ANOM_TRACE_TAG = "__anom_highlight__";
 
 // Two traces: one for the source (white star), one for the neighbors
 // (colored circles). Two traces avoid per-marker symbol/size arrays which
@@ -2042,7 +2064,7 @@ function buildKnnTraces(srcIdx) {
 }
 
 function _isOverlayTrace(t) {
-  return t && (t.name === KNN_TRACE_TAG || t.name === SCATTER_MARKER_TAG);
+  return t && (t.name === KNN_TRACE_TAG || t.name === ANOM_TRACE_TAG || t.name === SCATTER_MARKER_TAG);
 }
 
 function applyKnnHighlight(srcIdx) {
@@ -2079,7 +2101,7 @@ function clearKnnHighlight() {
     // selected-source marker's full opacity).
     const mainIdx = [];
     (div.data || []).forEach((t, i) => { if (!_isOverlayTrace(t)) mainIdx.push(i); });
-    Plotly.restyle(div, "marker.opacity", 0.55, mainIdx);
+    if (!highlightAnom) Plotly.restyle(div, "marker.opacity", 0.55, mainIdx);
   } catch (e) {
     console.error("clearKnnHighlight failed", e);
   }
@@ -2090,6 +2112,62 @@ function removeKnnTraceInPlace() {
   const indices = [];
   (div.data || []).forEach((t, i) => { if (t.name === KNN_TRACE_TAG) indices.push(i); });
   if (indices.length) Plotly.deleteTraces(div, indices);
+}
+
+// ── Anomaly highlight: overlay the top ~1% anomalies of the chosen model,
+//    analogous to the kNN highlight. Global (no selected source needed).
+const ANOM_HL_FRAC = 0.01;
+function buildAnomTraces() {
+  const sel = document.getElementById("hl-anom-model");
+  const field = resolveAnom(sel ? sel.value : "anom_consensus");
+  const k = Math.max(50, Math.round(points.length * ANOM_HL_FRAC));
+  const top = points.slice().sort((a, b) => (b[field] - a[field])).slice(0, k);
+  const xs = [], ys = [], cols = [], ids = [];
+  for (const p of top) {
+    const [x, y] = viewXY(p, currentView);
+    if (x == null || y == null) continue;
+    xs.push(x); ys.push(y); cols.push(VAR_TYPE_COLORS[p.var_type] || "#888"); ids.push(p.idx);
+  }
+  if (!xs.length) return null;
+  return [{
+    x: xs, y: ys, customdata: ids,
+    mode: "markers", type: "scatter", name: ANOM_TRACE_TAG,
+    marker: { size: 7, color: cols, line: { color: "#ff3b3b", width: 1.6 } },
+    hovertemplate: "anomaly #%{customdata}<extra></extra>", showlegend: false,
+  }];
+}
+function removeAnomTraceInPlace() {
+  const div = document.getElementById("scatter");
+  const indices = [];
+  (div.data || []).forEach((t, i) => { if (t.name === ANOM_TRACE_TAG) indices.push(i); });
+  if (indices.length) Plotly.deleteTraces(div, indices);
+}
+function applyAnomHighlight() {
+  const div = document.getElementById("scatter");
+  if (!div || !div.data || !div.data.length) return;
+  let traces;
+  try { traces = buildAnomTraces(); }
+  catch (e) { console.error("buildAnomTraces failed", e); return; }
+  if (!traces || !traces.length) return;
+  try {
+    const mainIdx = [];
+    (div.data || []).forEach((t, i) => { if (!_isOverlayTrace(t)) mainIdx.push(i); });
+    Plotly.restyle(div, "marker.opacity", 0.08, mainIdx);
+    removeAnomTraceInPlace();
+    Plotly.addTraces(div, traces);
+  } catch (e) { console.error("applyAnomHighlight failed", e); }
+}
+function clearAnomHighlight() {
+  const div = document.getElementById("scatter");
+  if (!div || !div.data) return;
+  try {
+    removeAnomTraceInPlace();
+    if (!highlightKnn) {
+      const mainIdx = [];
+      (div.data || []).forEach((t, i) => { if (!_isOverlayTrace(t)) mainIdx.push(i); });
+      Plotly.restyle(div, "marker.opacity", 0.55, mainIdx);
+    }
+  } catch (e) { console.error("clearAnomHighlight failed", e); }
 }
 
 // ── Persistent UMAP marker for the currently-selected source ─────
