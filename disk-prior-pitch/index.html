@@ -96,6 +96,24 @@
 </section>
 
 <section>
+  <h2>Our current prior: a rigid Roche mesh</h2>
+  <img src="mesh_prior_j1013.png" style="width:97%">
+  <p class="small"><b>Left:</b> the real J1013 mesh (<code>lcurve-lite</code>) — $\sim$10$^4$ surface elements
+  whose brightness comes from $\sim$6 analytic parameters. <b>Right:</b> the <span class="tag">new axis</span> —
+  the disk / hot-spot / flicker brightness becomes a high-dimensional field \(x \sim p(x)\) with a learned prior,
+  while masses, inclination, and period stay rigid.</p>
+</section>
+
+<section>
+  <h2>The technique, in our domain</h2>
+  <img src="posterior_mock_j1013.png" style="width:95%">
+  <p class="small">Schematic of the score-based posterior (cf. Adam+ 2022's source-galaxy reconstructions):
+  the learned prior <i>proposes</i> accretion structures; the <code>lroche</code> forward model + data keep only
+  those consistent to the noise. Many structures explain the eclipse equally well — the posterior captures that,
+  instead of collapsing to one best-fit.</p>
+</section>
+
+<section>
   <h2>The unfair advantage</h2>
   <ul>
     <li><b>\(A\) is already differentiable</b> — <code>lcurve-lite</code> is a GPU/gradient-friendly <code>lroche</code>,
