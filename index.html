@@ -24,6 +24,22 @@
                  border-right: 1px solid #21262d; min-height: 0;
                  transition: width 0.25s ease; }
   .left { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; }
+  .tabbar { display: flex; gap: 2px; border-bottom: 1px solid #21262d; margin-bottom: 8px; }
+  .tab { background: none; border: none; color: #8b949e; padding: 7px 16px; font-size: 13px;
+         cursor: pointer; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+  .tab:hover { color: #c9d1d9; background: #161b22; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; font-weight: 600; }
+  #emb-view, #anom-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .lab-card { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 8px 11px; margin-bottom: 10px; }
+  .lab-card h4 { font-size: 12px; color: #c9d1d9; margin: 0 0 6px; display: flex;
+                 justify-content: space-between; align-items: center; font-weight: 600; }
+  .lab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .lab-rowgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 14px; }
+  .lab-row { cursor: pointer; padding: 3px 6px; border-radius: 4px; font-size: 12px;
+             display: flex; justify-content: space-between; gap: 8px; }
+  .lab-row:hover { background: #1f2740; }
+  .lab-hint { font-size: 11px; color: #6e7681; margin-left: 6px; flex: 1; min-width: 120px; }
+  .lab-note { font-size: 10.5px; color: #6e7681; padding: 6px 2px 0; font-style: italic; }
   .right { width: 440px; border-left: 1px solid #21262d; padding: 12px;
            display: flex; flex-direction: column; gap: 10px; min-height: 0; }
   /* Auto-show left-side panels above 1400 px viewport width. */
@@ -261,6 +277,11 @@
   </div>
   <div class="resizer" id="resizer-left" title="Drag to resize left panels"></div>
   <div class="left">
+    <div class="tabbar">
+      <button class="tab active" data-tab="emb" title="UMAP scatter of the SSL embedding">Embedding Explorer</button>
+      <button class="tab" data-tab="anom" title="Global and per-group anomaly rankings">Anomaly Lab</button>
+    </div>
+    <div id="emb-view">
     <div class="controls">
       <label>View:</label>
       <select id="view-select">
@@ -352,6 +373,33 @@
       </label>
     </div>
     <div id="scatter"></div>
+    </div><!-- /emb-view -->
+    <div id="anom-view" style="display:none">
+      <div class="controls">
+        <label>Model:</label>
+        <select id="lab-method">
+          <option value="anom_consensus">consensus</option>
+          <option value="anom_if">Isolation Forest</option>
+          <option value="anom_lof">LOF</option>
+          <option value="anom_gmm">GMM</option>
+          <option value="anom_ocsvm">One-Class SVM</option>
+          <option value="anom_dinov2">DINOv2 + IF (visual)</option>
+          <option value="anom_dinov2_prop">DINOv2 propagated</option>
+        </select>
+        <label title="Anomaly scores on the SSL embedding vs the classical light-curve features">Rep:</label>
+        <select id="lab-rep"><option value="emb">Embedding</option><option value="feat">Features</option></select>
+        <label>Group by:</label>
+        <select id="lab-group">
+          <option value="class">Variability class</option>
+          <option value="region">Embedding region (KMeans k=15)</option>
+        </select>
+        <label>Per group:</label>
+        <select id="lab-topk"><option value="3">top 3</option><option value="5" selected>top 5</option><option value="8">top 8</option></select>
+        <span class="lab-hint">Local outliers = the most anomalous member of each group (catches the odd-one-out that the global ranking misses). Click any source to inspect it in the panels &rarr;</span>
+      </div>
+      <div class="lab-note">No density-separated DBSCAN/HDBSCAN clusters exist in this embedding (it is a near-continuous manifold &mdash; ~80&ndash;95% noise), so the unsupervised grouping uses KMeans (k=15) regions; the catalog variability class is the cleaner grouping.</div>
+      <div id="anom-lab-body" style="flex:1;min-height:0;overflow:auto;padding:4px 2px 20px"></div>
+    </div>
   </div>
   <div class="resizer" id="resizer-right" title="Drag to resize source-info panel"></div>
   <div class="right">
@@ -683,6 +731,7 @@ async function init() {
   document.getElementById("loading").style.display = "none";
   renderScatter("var_type");
   drawHRBackdrop();
+  initAnomLab();
   document.getElementById("color-select").addEventListener("change", e => {
     currentColorBy = e.target.value;
     renderScatter(currentColorBy);
@@ -1838,6 +1887,73 @@ function updateAnomalyPanel(field){
     + `<span style="float:right;color:#8b949e">${(p[field] ?? 0).toFixed(3)}</span></div>`).join("");
   list.querySelectorAll(".anom-row").forEach(r =>
     r.onclick = () => showSource(+r.dataset.idx));
+}
+
+// ---- Anomaly Lab tab -------------------------------------------------------
+const LAB_FEAT = new Set(["anom_consensus","anom_if","anom_lof","anom_gmm","anom_ocsvm"]);
+function labField(){
+  const m = document.getElementById("lab-method").value;
+  const rep = document.getElementById("lab-rep").value;
+  return (LAB_FEAT.has(m) && rep === "feat") ? m + "_feat" : m;
+}
+function labDominant(arr){
+  const c = {}; arr.forEach(p => c[p.var_type] = (c[p.var_type]||0)+1);
+  return Object.entries(c).sort((a,b)=>b[1]-a[1])[0][0];
+}
+function labRow(p, field, rank){
+  const col = VAR_TYPE_COLORS[p.var_type] || "#888";
+  const tag = rank <= 3 ? ["\u{1F947}","\u{1F948}","\u{1F949}"][rank-1] + " " : rank + ". ";
+  return `<div class="lab-row" data-idx="${p.idx}"><span>${tag}`
+    + `<b style="color:${col}">${p.var_type}</b> #${p.idx} \u00b7 `
+    + `P=${Number.isFinite(p.period) ? p.period.toFixed(3) : "\u2014"}d</span>`
+    + `<span style="color:#8b949e">${(p[field] ?? 0).toFixed(3)}</span></div>`;
+}
+function renderAnomLab(){
+  if (typeof points === "undefined" || !points) return;
+  const field = labField();
+  const k = +document.getElementById("lab-topk").value;
+  const groupBy = document.getElementById("lab-group").value;
+  const valid = points.filter(p => Number.isFinite(p[field]));
+  const glob = [...valid].sort((a,b)=>b[field]-a[field]).slice(0,24);
+  let html = `<div class="lab-card"><h4><span>\u{1F310} Global top outliers</span>`
+    + `<span style="color:#6e7681;font-weight:400">${valid.length.toLocaleString()} scored</span></h4>`
+    + `<div class="lab-rowgrid">${glob.map((p,i)=>labRow(p,field,i+1)).join("")}</div></div>`;
+  const groups = {};
+  valid.forEach(p => { const key = groupBy === "class" ? p.var_type : ("kc"+(p.kcluster ?? -1));
+                       (groups[key] ||= []).push(p); });
+  let keys = Object.keys(groups);
+  if (groupBy === "class") keys.sort((a,b)=>groups[b].length-groups[a].length);
+  else keys.sort((a,b)=>(+a.slice(2))-(+b.slice(2)));
+  html += `<div class="lab-grid">` + keys.map(key => {
+    const arr = groups[key];
+    const top = [...arr].sort((a,b)=>b[field]-a[field]).slice(0,k);
+    const title = groupBy === "class"
+      ? `<b style="color:${VAR_TYPE_COLORS[key]||'#888'}">${key}</b>`
+      : `Region ${+key.slice(2)} <span style="color:#6e7681;font-weight:400">\u00b7 mostly `
+        + `<b style="color:${VAR_TYPE_COLORS[labDominant(arr)]||'#888'}">${labDominant(arr)}</b></span>`;
+    return `<div class="lab-card"><h4><span>${title}</span>`
+      + `<span style="color:#6e7681;font-weight:400">n=${arr.length}</span></h4>`
+      + top.map((p,i)=>labRow(p,field,i+1)).join("") + `</div>`;
+  }).join("") + `</div>`;
+  const body = document.getElementById("anom-lab-body");
+  body.innerHTML = html;
+  body.querySelectorAll(".lab-row").forEach(r => r.onclick = () => showSource(+r.dataset.idx));
+}
+function initAnomLab(){
+  ["lab-method","lab-rep","lab-group","lab-topk"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener("change", renderAnomLab);
+  });
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    const tab = t.dataset.tab;
+    document.getElementById("emb-view").style.display = tab === "emb" ? "flex" : "none";
+    document.getElementById("anom-view").style.display = tab === "anom" ? "flex" : "none";
+    if (tab === "emb") { const sc = document.getElementById("scatter");
+      if (sc && window.Plotly) try { Plotly.Plots.resize(sc); } catch(e){} }
+    else renderAnomLab();
+  }));
+  renderAnomLab();
 }
 
 function renderScatter(colorBy) {
