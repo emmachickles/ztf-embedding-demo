@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Diagnostic — ZTF representations</title>
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<style>
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#21262d; --tx:#c9d1d9; --mut:#8b949e;
+         --mut2:#6e7681; --blue:#58a6ff; --purple:#a371f7; --pink:#db61a2; --green:#3fb950; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--tx); line-height:1.55;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:840px; margin:0 auto; padding:40px 22px 80px; }
+  .nav{ font-size:13px; margin-bottom:24px; }
+  .nav a{ color:var(--blue); text-decoration:none; } .nav a:hover{ text-decoration:underline; }
+  .eyebrow{ font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut2); margin-bottom:8px; }
+  h1{ font-size:28px; margin:0 0 12px; font-weight:700;
+      background:linear-gradient(92deg,var(--blue),var(--purple) 60%,var(--pink));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .lede{ font-size:17px; color:#e6edf3; margin:0 0 6px; }
+  .lede em{ color:var(--blue); font-style:normal; }
+  p{ color:var(--mut); font-size:15px; } p b{ color:var(--tx); }
+  .fig{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 12px 8px; margin:26px 0 10px; }
+  #diag{ width:100%; height:480px; }
+  .ctl{ display:flex; gap:12px; align-items:center; font-size:13px; color:var(--mut); padding:2px 8px 10px; flex-wrap:wrap; }
+  .ctl label{ cursor:pointer; }
+  .cap{ font-size:12.5px; color:var(--mut2); margin:8px 4px 30px; font-style:italic; }
+  h2{ font-size:18px; margin:34px 0 10px; color:#e6edf3; }
+  .why{ display:grid; gap:12px; margin:14px 0; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:13px 16px; }
+  .card h3{ margin:0 0 4px; font-size:14.5px; color:var(--purple); }
+  .card p{ margin:0; font-size:13.5px; }
+  .takeaway{ border-left:3px solid var(--pink); background:var(--panel); border-radius:0 8px 8px 0; padding:12px 16px; margin:20px 0; font-size:14.5px; color:var(--tx); }
+  .takeaway b{ color:var(--pink); }
+  .seealso{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:14px; }
+  .blk{ display:block; padding:12px 15px; background:var(--panel); border:1px solid var(--line); border-radius:9px; text-decoration:none; color:inherit; }
+  .blk:hover{ border-color:var(--purple); } .blk h4{ margin:0 0 3px; font-size:14px; color:#e6edf3; } .blk p{ margin:0; font-size:12.5px; }
+  footer{ margin-top:44px; padding-top:16px; border-top:1px solid var(--line); font-size:13px; color:var(--mut); display:flex; gap:16px; flex-wrap:wrap; }
+  footer a{ color:var(--blue); text-decoration:none; }
+  code{ background:#161b22; padding:1px 5px; border-radius:4px; font-size:13px; color:#e6edf3; }
+  .legend{ font-size:12.5px; color:var(--mut); padding:0 8px 6px; }
+  .sw{ display:inline-block; width:11px; height:11px; border-radius:2px; margin:0 4px 0 12px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="../series/">&#8592; Demo series</a></div>
+  <div class="eyebrow">Chapter 1 · demo series</div>
+  <h1>The Diagnostic</h1>
+  <p class="lede">What makes a light-curve embedding <em>good</em>? Separate template-matching from genuine per-source period reading.</p>
+  <p>Probe each frozen encoder to regress log-period, then split the result two ways. <b>Overall R²</b> looks impressive — but it conflates two very different skills. A model can score high just by recognizing the <b>class</b> and predicting that class's mean period (template-matching), without ever reading the period off the individual star. So we also measure <b>ρ_within</b>: the within-class rank correlation between predicted and true period, with the class effect removed. That is the part that requires actually reading absolute time.</p>
+
+  <div class="fig">
+    <div class="legend"><span class="sw" style="background:#58a6ff"></span>overall period R²
+      <span class="sw" style="background:#a371f7"></span>ρ_within (per-source reading)
+      <span style="color:var(--mut2)">· dashed = Lomb–Scargle ρ_within ceiling</span></div>
+    <div id="diag"></div>
+    <div class="ctl">
+      <span>Probe:</span>
+      <label><input type="radio" name="probe" value="ridge" checked> linear (ridge)</label>
+      <label><input type="radio" name="probe" value="mlp"> nonlinear (MLP)</label>
+    </div>
+  </div>
+  <p class="cap">Eight encoders + a classical Lomb–Scargle extractor on 25,565 ZTF variables. Long blue bar with a short purple bar = high R² that is mostly template-matching. Only Lomb–Scargle has both bars long. Switch to the MLP probe: R² rises (sharper templates) but ρ_within stays ≤ 0.31.</p>
+
+  <h2>How to read it</h2>
+  <div class="why">
+    <div class="card"><h3>High R², low ρ_within = template matching</h3><p>Every self-supervised encoder lands here: R² of 0.5–0.7, but ρ_within ≤ 0.26. They identify the class and predict its mean period; they don't read the individual source.</p></div>
+    <div class="card"><h3>The MLP probe sharpens templates, not reading</h3><p>Switching to a nonlinear probe raises R² (e.g. BiGRU 0.66 → 0.77) while ρ_within barely moves (≤ 0.31). The period information isn't hiding nonlinearly in the embedding — it largely isn't there.</p></div>
+    <div class="card"><h3>The signal is recoverable</h3><p>A direct Lomb–Scargle extractor reaches ρ_within = 0.78 on the same light curves. The within-source period is there to be read; the encoders are under-reading it.</p></div>
+  </div>
+
+  <div class="takeaway">
+    <b>The operational definition.</b> For classification, template-matching is enough — and that's why the foundation models look strong. For physics — period, and anything that depends on the ephemeris — "good" means high <b>ρ_within</b>. That single axis is what the rest of the series builds on: <a href="../externalization-ladder/" style="color:var(--pink)">why time-in-the-input doesn't lift it</a>, and where the shortcut finally breaks.
+  </div>
+
+  <h2>See also</h2>
+  <div class="seealso">
+    <a class="blk" href="../externalization-ladder/"><h4>Chapter 2 · Externalization Ladder ↗</h4><p>Why pouring time into the input doesn't raise ρ_within — and what does.</p></a>
+    <a class="blk" href="../"><h4>Embedding Explorer ↗</h4><p>The map: browse the embedding these numbers are computed on.</p></a>
+  </div>
+
+  <footer>
+    <a href="../series/">← Demo series</a>
+    <a href="https://github.com/emmachickles/period-diagnostic" target="_blank" rel="noopener">Paper &amp; code ↗</a>
+    <a href="../">Embedding Explorer ↗</a>
+  </footer>
+</div>
+
+<script>
+const M = [
+  {name:"Pretrained Chronos (46M)",   ridge:[0.686,0.228], mlp:[0.718,0.274], kind:"ssl"},
+  {name:"BiGRU (ours, +Δt)",          ridge:[0.661,0.258], mlp:[0.772,0.308], kind:"ssl"},
+  {name:"1D CNN (ours)",              ridge:[0.601,0.252], mlp:[0.710,0.293], kind:"ssl"},
+  {name:"Pretrained MOMENT (110M)",   ridge:[0.596,0.206], mlp:[0.587,0.214], kind:"ssl"},
+  {name:"CT-SSL transformer (ours)",  ridge:[0.543,0.237], mlp:[0.606,0.290], kind:"ssl"},
+  {name:"Chronos-T5 (from scratch)",  ridge:[0.187,0.036], mlp:[0.172,0.037], kind:"ssl"},
+  {name:"PatchTST (from scratch)",    ridge:[0.127,0.002], mlp:[-0.010,0.015], kind:"ssl"},
+  {name:"Lomb–Scargle (classical)",   ridge:[0.810,0.780], mlp:[0.810,0.780], kind:"ls"}
+];
+const CEIL = 0.78;
+function draw(probe){
+  // sort by R² of the chosen probe, descending; keep LS at the bottom as the reference
+  const ssl = M.filter(m=>m.kind==="ssl").slice().sort((a,b)=>a[probe][0]-b[probe][0]);
+  const ls  = M.filter(m=>m.kind==="ls");
+  const ord = ls.concat(ssl);               // bottom→top after reversed axis: LS at bottom
+  const names = ord.map(m=>m.name);
+  const r2  = ord.map(m=>m[probe][0]);
+  const rho = ord.map(m=>m[probe][1]);
+  const t1={ type:"bar", orientation:"h", y:names, x:r2, name:"R²",
+    marker:{color:ord.map(m=>m.kind==="ls"?"#79c0ff":"#58a6ff")},
+    text:r2.map(v=>v.toFixed(2)), textposition:"outside", textfont:{size:11,color:"#9fb4c8"},
+    hovertemplate:"%{y}<br>R² = %{x:.2f}<extra></extra>" };
+  const t2={ type:"bar", orientation:"h", y:names, x:rho, name:"ρ_within",
+    marker:{color:ord.map(m=>m.kind==="ls"?"#db61a2":"#a371f7")},
+    text:rho.map(v=>v.toFixed(2)), textposition:"outside", textfont:{size:11,color:"#c9a3e6"},
+    hovertemplate:"%{y}<br>ρ_within = %{x:.2f}<extra></extra>" };
+  const layout={ barmode:"group", bargap:0.35, bargroupgap:0.12,
+    margin:{l:184,r:34,t:8,b:42}, height:480, paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+    font:{color:"#c9d1d9"}, showlegend:false,
+    xaxis:{ range:[0,0.92], title:"score", gridcolor:"#21262d", zerolinecolor:"#30363d" },
+    yaxis:{ tickfont:{size:11} },
+    shapes:[{ type:"line", x0:CEIL, x1:CEIL, y0:-0.5, y1:names.length-0.5, line:{color:"#db61a2",dash:"dash",width:1} }] };
+  Plotly.react("diag", [t1,t2], layout, {displayModeBar:false, responsive:true});
+}
+draw("ridge");
+document.querySelectorAll('input[name=probe]').forEach(r=>r.addEventListener("change",e=>draw(e.target.value)));
+</script>
+</body>
+</html>
