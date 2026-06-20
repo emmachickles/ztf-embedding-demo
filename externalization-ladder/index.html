@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Externalization Ladder — ZTF representations</title>
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<style>
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#21262d; --tx:#c9d1d9; --mut:#8b949e;
+         --mut2:#6e7681; --blue:#58a6ff; --purple:#a371f7; --pink:#db61a2; --green:#3fb950; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--tx); line-height:1.55;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:840px; margin:0 auto; padding:40px 22px 80px; }
+  .nav{ font-size:13px; margin-bottom:24px; }
+  .nav a{ color:var(--blue); text-decoration:none; } .nav a:hover{ text-decoration:underline; }
+  .eyebrow{ font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut2); margin-bottom:8px; }
+  h1{ font-size:28px; margin:0 0 12px; font-weight:700;
+      background:linear-gradient(92deg,var(--blue),var(--purple) 60%,var(--pink));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .lede{ font-size:17px; color:#e6edf3; margin:0 0 6px; }
+  .lede em{ color:var(--blue); font-style:normal; }
+  p{ color:var(--mut); font-size:15px; } p b{ color:var(--tx); }
+  .fig{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 12px 8px; margin:26px 0 10px; }
+  #ladder{ width:100%; height:380px; }
+  .cap{ font-size:12.5px; color:var(--mut2); margin:8px 4px 30px; font-style:italic; }
+  h2{ font-size:18px; margin:34px 0 10px; color:#e6edf3; }
+  .why{ display:grid; gap:12px; margin:14px 0; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:13px 16px; }
+  .card h3{ margin:0 0 4px; font-size:14.5px; color:var(--purple); }
+  .card p{ margin:0; font-size:13.5px; }
+  .takeaway{ border-left:3px solid var(--pink); background:var(--panel); border-radius:0 8px 8px 0; padding:12px 16px; margin:20px 0; font-size:14.5px; color:var(--tx); }
+  .takeaway b{ color:var(--pink); }
+  .seealso{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:14px; }
+  .blk{ display:block; padding:12px 15px; background:var(--panel); border:1px solid var(--line); border-radius:9px; text-decoration:none; color:inherit; }
+  .blk:hover{ border-color:var(--purple); } .blk h4{ margin:0 0 3px; font-size:14px; color:#e6edf3; } .blk p{ margin:0; font-size:12.5px; }
+  footer{ margin-top:44px; padding-top:16px; border-top:1px solid var(--line); font-size:13px; color:var(--mut); display:flex; gap:16px; flex-wrap:wrap; }
+  footer a{ color:var(--blue); text-decoration:none; }
+  code{ background:#161b22; padding:1px 5px; border-radius:4px; font-size:13px; color:#e6edf3; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav"><a href="../series/">&#8592; Demo series</a></div>
+  <div class="eyebrow">Chapter 2 · demo series</div>
+  <h1>The Externalization Ladder</h1>
+  <p class="lede">Why doesn't continuous-time attention read off period — and should we just feed the model a <em>power spectrum</em>?</p>
+  <p>A model reads a source's period only to the extent that the period <b>search</b> is done <b>for</b> it. The rungs below pour ever more time information into the model — none, then full continuous time, then an explicit cadence channel — and within-class period reading (<code>ρ_within</code>) barely moves. It only jumps when the search is performed <b>explicitly</b>, by Lomb–Scargle. And that top rung is exactly what "feed it a power spectrum" means, done right: a fine periodogram plus an argmax peak-pick.</p>
+
+  <div class="fig">
+    <div id="ladder"></div>
+  </div>
+  <p class="cap">ρ_within = within-class Spearman of predicted vs. true log-period — per-source reading with the class-template effect removed. Bars show 95% bootstrap CIs over splits; the dashed line is the Lomb–Scargle ceiling. All numbers from the period-diagnostic study (25,565 ZTF variables).</p>
+
+  <h2>Why time-in-the-input barely helps</h2>
+  <div class="why">
+    <div class="card"><h3>The objective doesn't reward it</h3><p>Contrastive InfoNCE teaches shape and class invariants. Nothing in the loss has a gradient toward "encode the exact period," so the model learns the <b>cheap</b> invariant — what kind of star — and stops.</p></div>
+    <div class="card"><h3>There's no search mechanism</h3><p>Reading a period is a <b>search</b>: fold at a trial period, measure dispersion, optimize over trials. Lomb–Scargle and PDM are explicit search algorithms; a fixed-depth feedforward encoder can't run that inner loop. The dispersion landscape is flat with razor-thin spikes, so gradients and smooth attention slide right past the period.</p></div>
+    <div class="card"><h3>Confirmed empirically</h3><p>Continuous time as <b>input</b> doesn't move the needle: a pretrained foundation model on flux alone reaches ρ_within ≈ 0.21; our continuous-time transformer on full <code>(t,f,σ)</code> ≈ 0.24; a BiGRU with an explicit Δt channel ≈ 0.26; even handing MOMENT a Δt channel only lifts it to 0.26–0.30. PatchTST on <code>(t,f,σ)</code> ≈ 0.00.</p></div>
+  </div>
+
+  <div class="takeaway">
+    <b>So, the power spectrum?</b> The honest answer is that <b>Lomb–Scargle already is</b> the "feed-it-a-power-spectrum" model: a fine periodogram followed by an explicit peak-pick (argmax) — and it reaches 0.78. The hard, expensive part isn't computing the spectrum, it's the <b>argmax</b>: the period lives in the precise peak <em>location</em>, and a linear or smooth neural readout won't pick it out (a coarse, cheap spectrum just throws the precision away). So "add a power spectrum and eat the cost" collapses into "reimplement Lomb–Scargle." The productive direction is to put the <b>search itself</b> inside the model — a differentiable periodogram / phase-fold head, or an objective that's unsolvable without the period — rather than bolting a raw spectrum onto a template-matcher.
+  </div>
+
+  <h2>See also</h2>
+  <div class="seealso">
+    <a class="blk" href="../period-landscape/"><h4>Period-search landscape ↗</h4><p>The flat-with-spikes dispersion landscape that defeats gradient descent — why period reading is a search.</p></a>
+    <a class="blk" href="../period-aliasing/"><h4>Period-aliasing explorer ↗</h4><p>Why one star has many "periods": the P/2 harmonic and its diurnal aliases.</p></a>
+  </div>
+
+  <footer>
+    <a href="../series/">← Demo series</a>
+    <a href="https://github.com/emmachickles/period-diagnostic" target="_blank" rel="noopener">Paper &amp; code ↗</a>
+    <a href="../">Embedding Explorer ↗</a>
+  </footer>
+</div>
+
+<script>
+const DATA = {
+  rungs: [
+    {rung:"foundation model<br>flux only (no time)", rho:0.21, ci:[0.18,0.25], note:"no time axis at all", kind:"model"},
+    {rung:"deep encoder<br>raw (t, f, σ)",          rho:0.24, ci:[0.20,0.28], note:"continuous time in — must learn the search", kind:"model"},
+    {rung:"+ explicit Δt<br>cadence channel",        rho:0.26, ci:[0.22,0.29], note:"sampling handed over — still template-matching", kind:"model"},
+    {rung:"Lomb–Scargle<br>(fine spectrum + argmax)", rho:0.78, ci:[0.78,0.78], note:"the search done explicitly", kind:"classical"}
+  ],
+  ceil: 0.78
+};
+const COL = {model:"#58a6ff", classical:"#db61a2"};
+(function draw(){
+  const rungs = DATA.rungs, yl = rungs.map(r=>r.rung);
+  const xs=rungs.map(r=>r.rho), lo=rungs.map(r=>r.rho-r.ci[0]), hi=rungs.map(r=>r.ci[1]-r.rho);
+  const bar={ type:"bar", orientation:"h", x:xs, y:yl, text:xs.map(v=>v.toFixed(2)),
+    textposition:"outside", textfont:{color:"#e6edf3",size:13}, marker:{color:rungs.map(r=>COL[r.kind])},
+    error_x:{type:"data", symmetric:false, array:hi, arrayminus:lo, color:"#8b949e", thickness:1.4, width:4},
+    hovertemplate:"%{y}<br>ρ_within = %{x:.2f}<extra></extra>" };
+  const ann = rungs.map((r,i)=>({ x:0.012, y:i, xref:"x", yref:"y", text:"<i>"+r.note+"</i>",
+    showarrow:false, xanchor:"left", yanchor:"bottom", yshift:15, font:{color:"#8b949e",size:10.5} }));
+  const layout={ margin:{l:160,r:34,t:8,b:46}, height:380, paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+    font:{color:"#c9d1d9"}, bargap:0.45, showlegend:false, annotations:ann,
+    xaxis:{ range:[0,0.92], title:"within-class Spearman  ρ_within", gridcolor:"#21262d", zerolinecolor:"#30363d" },
+    yaxis:{ autorange:"reversed", tickfont:{size:11} },
+    shapes:[{ type:"line", x0:DATA.ceil, x1:DATA.ceil, y0:-0.5, y1:rungs.length-0.5, line:{color:"#db61a2",dash:"dash",width:1} }] };
+  Plotly.newPlot("ladder", [bar], layout, {displayModeBar:false, responsive:true});
+})();
+</script>
+</body>
+</html>

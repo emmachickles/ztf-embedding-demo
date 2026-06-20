@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZTF Light-Curve Representations — demo series</title>
+<style>
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#21262d; --line2:#30363d;
+         --tx:#c9d1d9; --mut:#8b949e; --mut2:#6e7681; --blue:#58a6ff;
+         --purple:#a371f7; --pink:#db61a2; --green:#3fb950; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--tx);
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:880px; margin:0 auto; padding:48px 22px 80px; }
+  .eyebrow{ font-size:12.5px; letter-spacing:.06em; text-transform:uppercase;
+            color:var(--mut2); margin-bottom:10px; }
+  h1{ font-size:32px; margin:0 0 14px; font-weight:700;
+      background:linear-gradient(92deg,var(--blue),var(--purple) 55%,var(--pink));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .q{ font-size:20px; color:#e6edf3; margin:0 0 16px; font-weight:500; }
+  .q em{ color:var(--blue); font-style:normal; }
+  .thesis{ font-size:15px; color:var(--mut); max-width:680px; margin:0 0 8px; }
+  .thesis b{ color:var(--tx); font-weight:600; }
+  .idea{ margin:26px 0 30px; padding:12px 16px; border-left:3px solid var(--purple);
+         background:var(--panel); border-radius:0 8px 8px 0; font-size:14px; color:var(--tx); }
+  .idea b{ color:var(--purple); }
+  h2{ font-size:13px; letter-spacing:.05em; text-transform:uppercase; color:var(--mut2);
+      margin:34px 0 14px; font-weight:600; }
+  .ch{ display:flex; gap:16px; padding:16px 18px; margin-bottom:12px;
+       background:var(--panel); border:1px solid var(--line); border-radius:10px;
+       text-decoration:none; color:inherit; transition:border-color .15s, transform .15s; }
+  a.ch:hover{ border-color:var(--blue); transform:translateY(-1px); }
+  .ch.soon{ opacity:.62; }
+  .num{ flex:0 0 38px; height:38px; border-radius:9px; display:flex; align-items:center;
+        justify-content:center; font-size:17px; font-weight:700; color:var(--bg);
+        background:linear-gradient(135deg,var(--blue),var(--purple)); }
+  .ch.soon .num{ background:#2b3340; color:var(--mut); }
+  .ch-body{ flex:1; min-width:0; }
+  .ch-head{ display:flex; align-items:center; gap:10px; margin-bottom:3px; }
+  .ch-head h3{ font-size:16px; margin:0; font-weight:600; }
+  .ask{ font-size:13.5px; color:var(--mut); margin:0; }
+  .ask .k{ color:var(--tx); }
+  .pill{ font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; font-weight:700;
+         padding:2px 8px; border-radius:20px; }
+  .pill.live{ color:var(--green); background:rgba(63,185,80,.13); }
+  .pill.next{ color:var(--blue); background:rgba(88,166,255,.13); }
+  .pill.soon{ color:var(--mut); background:#21262d; }
+  .blocks{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+  .blk{ display:block; padding:13px 15px; background:var(--panel); border:1px solid var(--line);
+        border-radius:9px; text-decoration:none; color:inherit; transition:border-color .15s; }
+  .blk:hover{ border-color:var(--purple); }
+  .blk h4{ margin:0 0 3px; font-size:14px; font-weight:600; color:#e6edf3; }
+  .blk p{ margin:0; font-size:12.5px; color:var(--mut); }
+  footer{ margin-top:46px; padding-top:18px; border-top:1px solid var(--line);
+          font-size:13px; color:var(--mut); display:flex; gap:18px; flex-wrap:wrap; }
+  footer a{ color:var(--blue); text-decoration:none; }
+  footer a:hover{ text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">A demo series · Emma Chickles · MIT Kavli</div>
+  <h1>ZTF Light-Curve Representations</h1>
+  <p class="q">When must a model actually <em>read physical time</em> — and when is template-matching enough?</p>
+  <p class="thesis">Self-supervised encoders look strong on light-curve classification. But a
+    simple diagnostic shows they get there by matching <b>class templates</b>, not by reading
+    each source's period off its raw, irregularly-sampled brightness — its <b>absolute time</b>.
+    This series traces that thread: how we measure it, why even continuous-time models still
+    don't read time, when the shortcut breaks, and what would fix it.</p>
+
+  <div class="idea">
+    <b>The one idea.</b> High downstream R²/accuracy is not evidence of learned time. Period
+    regression splits into a <b>between-class</b> piece (identify the class, predict its mean period
+    = template matching) and a <b>within-class</b> piece (read the period off the individual source).
+    Across eight encoders the within-class signal stays at ρ ≤ 0.26, while a classical
+    Lomb–Scargle extractor reaches 0.78 on the same data. The signal is there; the encoders
+    under-read it.
+  </div>
+
+  <h2>The series</h2>
+
+  <a class="ch" href="../">
+    <span class="num">0</span>
+    <div class="ch-body">
+      <div class="ch-head"><h3>Embedding Explorer</h3><span class="pill live">live</span></div>
+      <p class="ask">The map. UMAP of ~25k ZTF periodic variables, color by class / period / Gaia /
+        anomaly score; click any source for its light curve, HR position, and nearest neighbors.</p>
+    </div>
+  </a>
+
+  <div class="ch soon">
+    <span class="num">1</span>
+    <div class="ch-body">
+      <div class="ch-head"><h3>The Diagnostic</h3><span class="pill soon">soon</span></div>
+      <p class="ask"><span class="k">What makes an embedding "good"?</span> Interactive between- vs
+        within-class decomposition per encoder — the operational definition that the rest of the
+        series uses.</p>
+    </div>
+  </div>
+
+  <a class="ch" href="../externalization-ladder/">
+    <span class="num">2</span>
+    <div class="ch-body">
+      <div class="ch-head"><h3>The Externalization Ladder</h3><span class="pill live">live</span></div>
+      <p class="ask"><span class="k">Why doesn't continuous time help — and should we just feed a
+        power spectrum?</span> ρ_within barely moves as you add time to the input (none → continuous
+        → +Δt); it jumps only when the search is done explicitly — and Lomb–Scargle <em>is</em> that
+        power-spectrum-plus-peak-pick.</p>
+    </div>
+  </a>
+
+  <div class="ch soon">
+    <span class="num">3</span>
+    <div class="ch-body">
+      <div class="ch-head"><h3>When Template-Matching Breaks</h3><span class="pill soon">soon</span></div>
+      <p class="ask"><span class="k">Is reading time even important?</span> Classification is fine →
+        period regression breaks → quasiperiodic / period-changing sources break hard →
+        time-structural anomalies become invisible.</p>
+    </div>
+  </div>
+
+  <a class="ch" href="../#anomaly">
+    <span class="num">4</span>
+    <div class="ch-body">
+      <div class="ch-head"><h3>Anomaly Lab</h3><span class="pill live">live</span></div>
+      <p class="ask">Global top outliers plus the most anomalous member of each variability class and
+        each embedding region — a window on the <em>shape</em> anomalies the embedding can find (and a
+        setup for the <em>time</em> anomalies it can't).</p>
+    </div>
+  </a>
+
+  <h2>Building blocks (feed Chapter 2)</h2>
+  <div class="blocks">
+    <a class="blk" href="../period-aliasing/">
+      <h4>Period-aliasing explorer ↗</h4>
+      <p>Why the same star has many "periods": the P/2 harmonic and its diurnal aliases, with a
+        live phase-fold slider.</p>
+    </a>
+    <a class="blk" href="../period-landscape/">
+      <h4>Period-search landscape ↗</h4>
+      <p>Why gradient descent can't find a period: the dispersion landscape is flat with razor-thin
+        spikes — period reading is a search, not a smooth readout.</p>
+    </a>
+  </div>
+
+  <footer>
+    <a href="https://github.com/emmachickles/period-diagnostic" target="_blank" rel="noopener">Paper &amp; code ↗</a>
+    <a href="https://github.com/emmachickles/ztf-embedding-demo" target="_blank" rel="noopener">Demo source ↗</a>
+    <a href="https://github.com/emmachickles" target="_blank" rel="noopener">github.com/emmachickles ↗</a>
+    <span style="color:var(--mut2)">Accepted at the AI4Physics Workshop, ICML 2026</span>
+  </footer>
+</div>
+</body>
+</html>

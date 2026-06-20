@@ -227,6 +227,7 @@
     <h1>ZTF Light Curve Embedding Explorer</h1>
     <p>Self-supervised transformer (z<sub>sig</sub>) on the Chen+2020 catalog (~25 K periodic variables, 11 types). Click a point to see its raw or phase-folded light curve and Gaia HR-diagram position.</p>
   </div>
+  <a class="repo-link" href="series/" title="The full demo series and what each chapter answers" style="margin-right:10px;">&#9656; Demo series</a>
   <a class="repo-link" href="https://github.com/emmachickles/ztf-embedding-demo" target="_blank" rel="noopener">View on GitHub &#8599;</a>
 </header>
 
@@ -1953,6 +1954,10 @@ function initAnomLab(){
       if (sc && window.Plotly) try { Plotly.Plots.resize(sc); } catch(e){} }
     else renderAnomLab();
   }));
+  if (location.hash === "#anomaly") {
+    const at = document.querySelector('.tab[data-tab="anom"]');
+    if (at) { at.click(); return; }
+  }
   renderAnomLab();
 }
 
