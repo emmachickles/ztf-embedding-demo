@@ -60,7 +60,7 @@
   </div>
 
   <div class="takeaway">
-    <b>So, the power spectrum?</b> The honest answer is that <b>Lomb–Scargle already is</b> the "feed-it-a-power-spectrum" model: a fine periodogram followed by an explicit peak-pick (argmax) — and it reaches 0.78. The hard, expensive part isn't computing the spectrum, it's the <b>argmax</b>: the period lives in the precise peak <em>location</em>, and a linear or smooth neural readout won't pick it out (a coarse, cheap spectrum just throws the precision away). So "add a power spectrum and eat the cost" collapses into "reimplement Lomb–Scargle." The productive direction is to put the <b>search itself</b> inside the model — a differentiable periodogram / phase-fold head, or an objective that's unsolvable without the period — rather than bolting a raw spectrum onto a template-matcher.
+    <b>So, the power spectrum? We tested it.</b> Feeding a network the (log-pooled) Lomb–Scargle power spectrum reaches ρ<sub>within</sub> = <b>0.27</b> (MLP) — no better than the raw light curve, far below 0.78. The spectrum <em>carries</em> the class (R²&nbsp;=&nbsp;0.63) but a generic readout can't resolve the aliases to read the per-source period. <b>Lomb–Scargle already is</b> the "feed-it-a-power-spectrum" model done right: fine periodogram + explicit peak-pick (argmax) = 0.78. The hard part isn't computing the spectrum — it's the <b>argmax</b>. So "add a power spectrum and eat the cost" collapses into "reimplement Lomb–Scargle." The productive direction is to put the <b>search itself</b> inside the model, or use an objective that's unsolvable without the period.
   </div>
 
   <h2>See also</h2>
@@ -82,11 +82,12 @@ const DATA = {
     {rung:"foundation model<br>flux only (no time)", rho:0.21, ci:[0.18,0.25], note:"no time axis at all", kind:"model"},
     {rung:"deep encoder<br>raw (t, f, σ)",          rho:0.24, ci:[0.20,0.28], note:"continuous time in — must learn the search", kind:"model"},
     {rung:"+ explicit Δt<br>cadence channel",        rho:0.26, ci:[0.22,0.29], note:"sampling handed over — still template-matching", kind:"model"},
+    {rung:"power spectrum in<br>(+ neural readout)",  rho:0.27, ci:[0.25,0.31], note:"the spectrum, read by a network", kind:"input"},
     {rung:"Lomb–Scargle<br>(fine spectrum + argmax)", rho:0.78, ci:[0.78,0.78], note:"the search done explicitly", kind:"classical"}
   ],
   ceil: 0.78
 };
-const COL = {model:"#58a6ff", classical:"#db61a2"};
+const COL = {model:"#58a6ff", input:"#a371f7", classical:"#db61a2"};
 (function draw(){
   const rungs = DATA.rungs, yl = rungs.map(r=>r.rung);
   const xs=rungs.map(r=>r.rho), lo=rungs.map(r=>r.rho-r.ci[0]), hi=rungs.map(r=>r.ci[1]-r.rho);
